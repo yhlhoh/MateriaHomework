@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作业看板</title>
+    <!-- Google Sans 字体 -->
+    <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Google Sans', 'Product Sans', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+            height: 100vh;
+            width: 100vw;
+            background-color: #fce4e4;
+            background-image: url('assets/default.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* 左下角控制栏 */
+        .controls {
+            position: absolute;
+            bottom: 25px;
+            left: 25px;
+            z-index: 1000;
+            display: flex;
+            gap: 12px;
+        }
+
+        /* 左上角自定义图片容器 - 原始大小，无边框 */
+        .custom-images {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            z-index: 999;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+        }
+        .custom-images img {
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            width: auto;
+            height: auto;
+            max-width: none;
+            border: none;
+        }
+        .custom-images img:hover { transform: scale(1.02); }
+
+        /* 主布局区域 */
+        .container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            padding: 4vh 4vw;
+            gap: 4vw;
+        }
+
+        /* 左侧时间区域 */
+        .left-panel {
+            flex: 0 0 30%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .clock {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-weight: bold;
+            color: var(--time-color, #FFA3B1);
+            line-height: 0.85;
+            text-shadow: 2px 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        .hours, .minutes { font-size: 15vw; letter-spacing: -2px; }
+        .date {
+            margin-top: 2vh;
+            font-size: 1.8vw;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: var(--time-color, #FFA3B1);
+        }
+
+        /* 右侧作业列表区域 */
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 1.5vh;
+            height: 100%;
+        }
+
+        .task-item {
+            flex: 1;
+            background-color: var(--item-bg, #FAE4E7);
+            border-radius: 50px;
+            padding: 10px 20px 10px 10px;
+            display: flex;
+            align-items: flex-start;
+            position: relative;
+            transition: background-color 0.3s ease, transform 0.3s;
+            min-height: 60px;
+            animation: fadeIn 0.4s ease forwards;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .subject-tag {
+            background-color: var(--tag-bg, #FCE0C6);
+            border-radius: 40px;
+            padding: 12px 25px;
+            display: flex;
+            align-items: center;
+            align-self: center;
+            gap: 12px;
+            flex-shrink: 0;
+            color: var(--text-color, #3E1914);
+            font-weight: bold;
+            font-size: 30px;
+            margin-right: 20px;
+        }
+
+        .subject-tag .icon-mask {
+            height: 1.2em;
+            width: 1.2em;
+        }
+
+        .icon-mask {
+            display: inline-block;
+            background-color: var(--icon-color, var(--text-color, #3E1914));
+            -webkit-mask-image: var(--icon-url);
+            mask-image: var(--icon-url);
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+            -webkit-mask-size: contain;
+            mask-size: contain;
+            flex-shrink: 0;
+        }
+
+        .task-content {
+            flex: 1;
+            height: 100%;
+            outline: none;
+            align-self: center;
+            align-items: center;
+            color: var(--text-color, #3E1914);
+            font-size: 40px;
+            line-height: 1.4;
+            font-weight: bold;
+            word-break: break-all;
+            white-space: pre-wrap;
+            cursor: text;
+        }
+
+        .task-content[contenteditable="true"]:empty:before {
+            content: "点击编辑...";
+            color: rgba(62, 25, 20, 0.3);
+            pointer-events: none;
+        }
+
+        .delete-btn {
+            background: #fff;
+            border: none;
+            color: #d32f2f;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 10px;
+            margin-top: 8px;
+            opacity: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .delete-btn:hover { background: #ffeaea; transform: scale(1.1); }
+        .task-item:hover .delete-btn { opacity: 1; }
+
+        /* 右下角恢复面板 - 圆形小图标 */
+        .restore-panel {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: row-reverse;
+            gap: 16px;
+            z-index: 1000;
+            flex-wrap: wrap-reverse;
+            max-width: 420px;
+            pointer-events: none;
+        }
+        .restore-panel .restore-btn {
+            pointer-events: auto;
+        }
+
+        .primary-btn {
+            width: 58px;
+            height: 58px;
+            background-color: var(--tag-bg, #FCE0C6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            position: relative;
+            border: 2px solid rgba(255,250,240,0.6);
+        }
+
+        .primary-btn:hover {
+            transform: scale(1.18) translateY(-6px);
+            background-color: var(--item-bg, #FAE4E7);
+        }
+
+        .primary-btn .icon-mask {
+            width: 34px;
+            height: 34px;
+            --icon-color: var(--text-color, #3E1914);
+        }
+
+        .primary-btn::before {
+            content: attr(data-name);
+            position: absolute;
+            top: -42px;
+            background-color: rgba(40, 25, 20, 0.85);
+            color: #fff9f0;
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-size: 14px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+            transform: translateY(10px);
+        }
+
+        .primary-btn:hover::before {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+    <input type="file" id="bg-input" accept="image/*" style="display:none">
+    <input type="file" id="img-input" accept="image/*" multiple style="display:none">
+
+    <!-- 左下角控制栏 -->
+    <div class="controls">
+        <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
+            <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
+        </button>
+        <button id="img-add-btn" class="primary-btn" data-name="添加图片">
+            <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
+        </button>
+    </div>
+
+    <!-- 左上角自定义图片容器 -->
+    <div class="custom-images" id="custom-images-container"></div>
+
+    <div class="container">
+        <div class="left-panel">
+            <div class="clock">
+                <div class="hours" id="hours">--</div>
+                <div class="minutes" id="minutes">--</div>
+                <div class="date" id="date">--</div>
+            </div>
+        </div>
+
+        <div class="right-panel" id="task-list"></div>
+    </div>
+
+    <!-- 右下角恢复区 -->
+    <div class="restore-panel" id="restore-panel"></div>
+
+    <!-- 主脚本：由 Vite 编译打包 -->
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>
+
+
+
