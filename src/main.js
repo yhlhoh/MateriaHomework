@@ -314,8 +314,8 @@ setInterval(updateClock, 1000);
 updateClock();
 initData();
 loadImages();
-getElementById('modal').style("hidden:true");
-getElementById('full-screen-btn').onclick('screenfull.toggle();')
+getElementById('modal').remove()
+getElementById('full-screen-btn').addEventListener('click',()=>{screenfull.toggle();})
 
 // 如果没有背景图片，使用默认主题
 setTimeout(() => {
