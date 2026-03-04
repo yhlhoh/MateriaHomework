@@ -1,4 +1,4 @@
-// ==================== 1. 导入Material You官方库和screenfull ====================
+// ==================== 1. 导入依赖 ====================
 import {
     argbFromHex,
     themeFromSourceColor,
@@ -6,6 +6,7 @@ import {
     sourceColorFromImageBytes,
 } from '@material/material-color-utilities';
 import screenfull from 'screenfull';
+import html2canvas from 'html2canvas';
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -314,8 +315,18 @@ setInterval(updateClock, 1000);
 updateClock();
 initData();
 //loadImages();
-getElementById('modal').remove()
-getElementById('full-screen-btn').addEventListener('click',()=>{screenfull.toggle();})
+document.getElementById('modal').remove()
+document.getElementById('full-screen-btn').addEventListener('click',()=>{screenfull.toggle();})
+document.getElementById('save-btn').addEventListener('click', () => {
+  const container = document.querySelector('.container');
+  if (!container) return;
+  html2canvas(container, { scale: 2 }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = 'screenshot.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+});
 
 // 如果没有背景图片，使用默认主题
 setTimeout(() => {
