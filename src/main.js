@@ -313,7 +313,7 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 initData();
-loadImages();
+//loadImages();
 getElementById('modal').remove()
 getElementById('full-screen-btn').addEventListener('click',()=>{screenfull.toggle();})
 
