@@ -1,10 +1,11 @@
-// ==================== 1. 导入Material You官方库 ====================
+// ==================== 1. 导入Material You官方库和screenfull ====================
 import {
     argbFromHex,
     themeFromSourceColor,
     hexFromArgb,
     sourceColorFromImageBytes,
 } from '@material/material-color-utilities';
+import screenfull from 'screenfull';
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -237,7 +238,7 @@ function applyBackgroundImage(url, revokePrevious = false) {
     document.body.style.backgroundRepeat = 'no-repeat';
 }
 
-async function loadImages() {
+async function loadIages() {
     const bgFile = await getDB('background_img');
     if (bgFile) {
         const url = URL.createObjectURL(bgFile);
@@ -313,6 +314,8 @@ setInterval(updateClock, 1000);
 updateClock();
 initData();
 loadImages();
+getElementById('modal').style("hidden:true");
+getElementById('full-screen-btn').onclick('screenfull.toggle();')
 
 // 如果没有背景图片，使用默认主题
 setTimeout(() => {

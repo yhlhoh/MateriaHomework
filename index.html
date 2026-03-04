@@ -24,6 +24,20 @@
             background-repeat: no-repeat;
         }
 
+        /* 加载模态框 */
+        .loading-modal {
+            position: absolute;
+            background-color: #000000;
+            top: 0px;
+            left: 0px;
+            z-index: 114514;
+            height: 100%;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+        }
         /* 左下角控制栏 */
         .controls {
             position: absolute;
@@ -265,7 +279,9 @@
     </style>
 </head>
 <body>
-
+    <div id="modal" class="loading-modal">
+        <h1 style="color: #FFFFFF">正在加载</h1>
+    </div>
     <input type="file" id="bg-input" accept="image/*" style="display:none">
     <input type="file" id="img-input" accept="image/*" multiple style="display:none">
 
@@ -276,6 +292,13 @@
         </button>
         <button id="img-add-btn" class="primary-btn" data-name="添加图片">
             <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
+        </button>
+        <button id="full-screen-btn" class="primary-btn" data-name="切换全屏">
+            <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
+        </button>
+        <button id="save-btn" class="primary-btn" data-name="保存图片">
+            <span class="iceon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true">
+            </span>
         </button>
     </div>
 
