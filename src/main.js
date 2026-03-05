@@ -6,7 +6,7 @@ import {
     sourceColorFromImageBytes,
 } from '@material/material-color-utilities';
 import screenfull from 'screenfull';
-import html2canvas from 'html2canvas';
+import { snapdom } from '@zumer/snapdom';
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -317,15 +317,19 @@ initData();
 //loadImages();
 document.getElementById('modal').remove()
 document.getElementById('full-screen-btn').addEventListener('click',()=>{screenfull.toggle();})
-document.getElementById('save-btn').addEventListener('click', () => {
-  const container = document.querySelector('.container');
-  if (!container) return;
-  html2canvas(container, { scale: 2 }).then(canvas => {
-    const link = document.createElement('a');
-    link.download = 'screenshot.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  });
+document.getElementById('save-btn').addEventListener('click', async () => {
+  try {
+    // 截取 body，但只保留 container 和 custom-images 内部的内容
+    await snapdom.download(document.body, {
+      format: 'png',
+      filename: 'snapshot.png', 
+      scale:2,
+      filterMode: 'remove',
+      embedFonts: true,
+    });
+  } catch (err) {
+    console.error('截图失败:', err);
+  }
 });
 
 // 如果没有背景图片，使用默认主题
