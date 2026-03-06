@@ -6,7 +6,7 @@ import {
     sourceColorFromImageBytes,
 } from '@material/material-color-utilities';
 import screenfull from 'screenfull';
-import { snapdom } from '@zumer/snapdom';
+import html2canvas from 'html2canvas';
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -30,7 +30,69 @@ async function getDB(key) {
     return new Promise(r => req.onsuccess = () => r(req.result));
 }
 
-// ==================== 3. 全局状态 ====================
+// ==================== 3. 内联SVG替换器 ====================
+const svgCache = new Map();
+
+async function replaceIconMasks(container = document) {
+    const masks = container.querySelectorAll('.icon-mask');
+    for (const span of masks) {
+        try {
+            const iconUrlVar = span.style.getPropertyValue('--icon-url').trim();
+            if (!iconUrlVar) continue;
+            const matches = iconUrlVar.match(/url\(['"]?(.*?)['"]?\)/);
+            if (!matches) continue;
+            const url = matches[1];
+            if (!url) continue;
+
+            // 从缓存或网络获取SVG文本
+            let svgText;
+            if (svgCache.has(url)) {
+                svgText = svgCache.get(url);
+            } else {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                svgText = await resp.text();
+                svgCache.set(url, svgText);
+            }
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(svgText, 'image/svg+xml');
+            const svgEl = doc.documentElement;
+            if (svgEl.tagName !== 'svg') throw new Error('不是有效的SVG');
+
+            // 创建新的SVG元素 (保留原有属性)
+            const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            // 复制所有属性
+            for (const attr of svgEl.attributes) {
+                newSvg.setAttribute(attr.name, attr.value);
+            }
+            // 移动子节点
+            while (svgEl.firstChild) {
+                newSvg.appendChild(svgEl.firstChild);
+            }
+
+            // 设置类: 保留原类并添加 icon-svg (移除可能冲突的mask样式)
+            newSvg.setAttribute('class', span.className + ' icon-svg');
+            // 强制使用 currentColor 以便主题控制
+            newSvg.removeAttribute('fill');
+            newSvg.setAttribute('fill', 'currentColor');
+            // 确保viewBox存在（若缺失且宽高存在，粗略处理）
+            if (!newSvg.hasAttribute('viewBox') && newSvg.hasAttribute('width') && newSvg.hasAttribute('height')) {
+                const w = parseFloat(newSvg.getAttribute('width'));
+                const h = parseFloat(newSvg.getAttribute('height'));
+                if (!isNaN(w) && !isNaN(h)) {
+                    newSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+                }
+            }
+
+            span.parentNode.replaceChild(newSvg, span);
+        } catch (err) {
+            console.warn('替换SVG失败:', err, span);
+        }
+    }
+}
+
+// ==================== 4. 全局状态与看板逻辑 ====================
 let appState = [];
 const defaultSubjects = [
     { id: 's1', name: '语文', icon: 'assets/chinese.svg', content: '', isDeleted: false },
@@ -110,6 +172,10 @@ function renderUI() {
             restorePanel.appendChild(btn);
         }
     });
+
+    // 新DOM生成后，将里面的占位.icon-mask替换为内联SVG
+    replaceIconMasks(taskList);
+    replaceIconMasks(restorePanel);
 }
 
 function deleteSubject(index, taskItem) {
@@ -132,9 +198,7 @@ function saveState() {
     localStorage.setItem('kanban_data', JSON.stringify(appState));
 }
 
-// ==================== 4. 背景采样与莫奈取色 (使用官方库) ====================
-
-// 获取图片像素数据
+// ==================== 5. 背景采样与莫奈取色 ====================
 async function getImageDataFromFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -142,7 +206,6 @@ async function getImageDataFromFile(file) {
             const img = new Image();
             img.crossOrigin = 'Anonymous';
             img.src = e.target.result;
-
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -151,7 +214,6 @@ async function getImageDataFromFile(file) {
                 ctx.drawImage(img, 0, 0);
                 resolve(ctx.getImageData(0, 0, img.width, img.height).data);
             };
-
             img.onerror = reject;
         };
         reader.onerror = reject;
@@ -159,12 +221,9 @@ async function getImageDataFromFile(file) {
     });
 }
 
-// 从图片文件提取主色：使用官方库的 QuantizerCelebi + Score 流水线
 async function extractPrimaryColorFromFile(file) {
     try {
         const pixelData = await getImageDataFromFile(file);
-        // sourceColorFromImageBytes 内部调用官方库的 QuantizerCelebi 和 Score，
-        // 完整实现背景采样与 Monet 取色逻辑，无需自行实现底层算法。
         const sourceArgb = sourceColorFromImageBytes(pixelData);
         return hexFromArgb(sourceArgb);
     } catch (error) {
@@ -173,7 +232,6 @@ async function extractPrimaryColorFromFile(file) {
     }
 }
 
-// 应用 Material You 主题
 async function applyMaterialYouTheme(hexColor) {
     try {
         const sourceArgb = argbFromHex(hexColor);
@@ -181,17 +239,12 @@ async function applyMaterialYouTheme(hexColor) {
 
         const colors = {
             primary: hexFromArgb(theme.schemes.light.primary),
-            onPrimary: hexFromArgb(theme.schemes.light.onPrimary),
-            primaryContainer: hexFromArgb(theme.schemes.light.primaryContainer),
-            secondary: hexFromArgb(theme.schemes.light.secondary),
             secondaryContainer: hexFromArgb(theme.schemes.light.secondaryContainer),
-            tertiary: hexFromArgb(theme.schemes.light.tertiary),
             tertiaryContainer: hexFromArgb(theme.schemes.light.tertiaryContainer),
-            surface: hexFromArgb(theme.schemes.light.surface),
             background: hexFromArgb(theme.schemes.light.background),
             onSurface: hexFromArgb(theme.schemes.light.onSurface)
         };
-        console.log("TertiaryContainer:", colors.tertiaryContainer);
+        
         document.documentElement.style.setProperty('--time-color', colors.primary);
         document.documentElement.style.setProperty('--item-bg', colors.secondaryContainer);
         document.documentElement.style.setProperty('--tag-bg', colors.tertiaryContainer);
@@ -199,8 +252,6 @@ async function applyMaterialYouTheme(hexColor) {
         document.documentElement.style.setProperty('--btn-hover', colors.tertiaryContainer);
 
         document.body.style.backgroundColor = colors.background;
-
-        console.log('主题已应用，主色:', hexColor);
         return colors;
 
     } catch (error) {
@@ -220,7 +271,7 @@ async function applyMaterialYouTheme(hexColor) {
     }
 }
 
-// ==================== 5. 图片操作 ====================
+// ==================== 6. 图片操作 ====================
 let savedCustomImages = [];
 let currentBgObjectUrl = null;
 
@@ -228,27 +279,23 @@ function applyBackgroundImage(url, revokePrevious = false) {
     if (revokePrevious && currentBgObjectUrl) {
         URL.revokeObjectURL(currentBgObjectUrl);
     }
-
     if (url.startsWith('blob:')) {
         currentBgObjectUrl = url;
     }
-
     document.body.style.backgroundImage = `url('${url}')`;
     document.body.style.backgroundSize = 'cover';
     document.body.style.backgroundPosition = 'center center';
     document.body.style.backgroundRepeat = 'no-repeat';
 }
 
-async function loadIages() {
+async function loadImages() {
     const bgFile = await getDB('background_img');
     if (bgFile) {
         const url = URL.createObjectURL(bgFile);
         applyBackgroundImage(url);
-
         const primaryColor = await extractPrimaryColorFromFile(bgFile);
         await applyMaterialYouTheme(primaryColor);
     }
-
     savedCustomImages = (await getDB('custom_images')) || [];
     savedCustomImages.forEach(imgData => createCustomImgElement(imgData.id, imgData.file));
 }
@@ -301,7 +348,7 @@ function createCustomImgElement(id, file) {
     document.getElementById('custom-images-container').appendChild(img);
 }
 
-// ==================== 6. 时钟 ====================
+// ==================== 7. 时钟 ====================
 function updateClock() {
     const now = new Date();
     document.getElementById('hours').textContent = String(now.getHours()).padStart(2, '0');
@@ -310,31 +357,74 @@ function updateClock() {
     document.getElementById('date').textContent = `${days[now.getDay()]}, ${now.getMonth() + 1}月${now.getDate()}日`;
 }
 
-// ==================== 7. 初始化 ====================
+// ==================== 8. 截图导出优化 ====================
+function disableTransitionsTemp() {
+    const style = document.createElement('style');
+    style.id = 'temp-disable-transitions';
+    style.innerHTML = `* { transition: none !important; animation: none !important; }`;
+    document.head.appendChild(style);
+    return () => {
+        const el = document.getElementById('temp-disable-transitions');
+        if (el) el.remove();
+    };
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+    try {
+        const controls = document.querySelector('.controls');
+        const restorePanel = document.getElementById('restore-panel');
+        
+        if (controls) controls.style.display = 'none';
+        if (restorePanel) restorePanel.style.display = 'none';
+
+        const restoreTransitions = disableTransitionsTemp();
+
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const canvas = await html2canvas(document.body, {
+            scale: 2,
+            useCORS: true, 
+            backgroundColor: null
+        });
+
+        restoreTransitions();
+        if (controls) controls.style.display = '';
+        if (restorePanel) restorePanel.style.display = '';
+
+        const imgData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = 'MateriaHomework.png';
+        link.href = imgData;
+        link.click();
+        
+    } catch (err) {
+        console.error('截图失败:', err);
+    }
+});
+
+// ==================== 9. 初始化 ====================
 setInterval(updateClock, 1000);
 updateClock();
 initData();
-//loadImages();
-document.getElementById('modal').remove()
-document.getElementById('full-screen-btn').addEventListener('click',()=>{screenfull.toggle();})
-document.getElementById('save-btn').addEventListener('click', async () => {
-  try {
-    // 截取 body，但只保留 container 和 custom-images 内部的内容
-    await snapdom.download(document.body, {
-      format: 'png',
-      filename: 'snapshot.png', 
-      scale:2,
-      filterMode: 'remove',
-      embedFonts: true,
-    });
-  } catch (err) {
-    console.error('截图失败:', err);
-  }
-});
+loadImages();
 
-// 如果没有背景图片，使用默认主题
+// 替换左下角固定按钮中的图标 (等待DOM就绪)
+setTimeout(() => {
+    replaceIconMasks(document.querySelector('.controls'));
+}, 100);
+
+// 设置默认主题 (如果没有背景图片)
 setTimeout(() => {
     if (!document.body.style.backgroundImage || document.body.style.backgroundImage === 'url("assets/background.png")') {
-        applyMaterialYouTheme('#9C4F4F'); // 默认暖棕色
+        applyMaterialYouTheme('#9C4F4F');
     }
 }, 500);
+
+// 移除加载模态框
+const modal = document.querySelector('.loading-modal');
+if (modal) modal.remove();
+
+// 全屏按钮事件
+document.getElementById('full-screen-btn').addEventListener('click', () => { 
+    if (screenfull.isEnabled) screenfull.toggle(); 
+});

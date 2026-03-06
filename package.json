@@ -1,5 +1,5 @@
 {
-  "name": "homeworkpanel",
+  "name": "MateriaHomework",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -9,10 +9,8 @@
   },
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",
-    "@zumer/snapdom": "^2.0.2",
     "html2canvas": "^1.4.1",
-    "screenfull": "^6.0.2",
-    "snapdom": "^0.1.2"
+    "screenfull": "^6.0.2"
   },
   "devDependencies": {
     "vite": "^7.3.1"

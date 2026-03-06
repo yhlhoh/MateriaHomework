@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>作业看板</title>
     <!-- Google Sans 字体 -->
+    <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
     <style>
         * {
             box-sizing: border-box;
@@ -21,6 +22,7 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
+            color: var(--text-color, #3E1914);
         }
 
         /* 加载模态框 */
@@ -35,8 +37,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-
         }
+
         /* 左下角控制栏 */
         .controls {
             position: absolute;
@@ -149,25 +151,22 @@
             margin-right: 20px;
         }
 
-        .subject-tag .icon-mask {
-            height: 1.2em;
-            width: 1.2em;
-        }
-
-        .icon-mask {
+        /* 内联SVG通用样式：继承当前文字颜色，自适应大小 */
+        .icon-svg {
             display: inline-block;
-            background-color: var(--icon-color, var(--text-color, #3E1914));
-            -webkit-mask-image: var(--icon-url);
-            mask-image: var(--icon-url);
-            -webkit-mask-repeat: no-repeat;
-            mask-repeat: no-repeat;
-            -webkit-mask-position: center;
-            mask-position: center;
-            -webkit-mask-size: contain;
-            mask-size: contain;
-            flex-shrink: 0;
+            fill: currentColor;
+            width: auto;
+            height: 1.2em;
+            vertical-align: middle;
         }
 
+        /* 针对subject-tag里的图标固定高度，宽度自适应 */
+        .subject-tag .icon-svg {
+            height: 1.2em;
+            width: auto;
+        }
+
+        /* 任务内容区域 */
         .task-content {
             flex: 1;
             height: 100%;
@@ -243,6 +242,7 @@
             transition: all 0.3s;
             position: relative;
             border: 2px solid rgba(255,250,240,0.6);
+            color: var(--text-color, #3E1914);  /* 让图标继承此颜色 */
         }
 
         .primary-btn:hover {
@@ -250,10 +250,9 @@
             background-color: var(--item-bg, #FAE4E7);
         }
 
-        .primary-btn .icon-mask {
+        .primary-btn .icon-svg {
             width: 34px;
             height: 34px;
-            --icon-color: var(--text-color, #3E1914);
         }
 
         .primary-btn::before {
@@ -278,14 +277,12 @@
     </style>
 </head>
 <body>
-    <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
-    <div id="modal" class="loading-modal">
+    <div class="loading-modal">
         <h1 style="color: #FFFFFF">正在加载</h1>
     </div>
     <input type="file" id="bg-input" accept="image/*" style="display:none">
     <input type="file" id="img-input" accept="image/*" multiple style="display:none">
 
-    <!-- 左下角控制栏 -->
     <div class="controls">
         <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
             <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
@@ -297,8 +294,7 @@
             <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
         </button>
         <button id="save-btn" class="primary-btn" data-name="保存图片">
-            <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true">
-            </span>
+            <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true"></span>
         </button>
     </div>
 
@@ -320,10 +316,6 @@
     <!-- 右下角恢复区 -->
     <div class="restore-panel" id="restore-panel"></div>
 
-    <!-- 主脚本：由 Vite 编译打包 -->
     <script type="module" src="./src/main.js"></script>
 </body>
 </html>
-
-
-
