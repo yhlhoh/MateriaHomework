@@ -245,7 +245,7 @@ async function applyMaterialYouTheme(hexColor) {
             onSurface: hexFromArgb(theme.schemes.light.onSurface)
         };
         
-        document.documentElement.style.setProperty('--time-color', colors.primary);
+        document.documentElement.style.setProperty('--time-color', colors.tertiaryContainer);
         document.documentElement.style.setProperty('--item-bg', colors.secondaryContainer);
         document.documentElement.style.setProperty('--tag-bg', colors.tertiaryContainer);
         document.documentElement.style.setProperty('--text-color', colors.onSurface);
@@ -421,8 +421,10 @@ setTimeout(() => {
 }, 500);
 
 // 移除加载模态框
-const modal = document.querySelector('.loading-modal');
-if (modal) modal.remove();
+window.addEventListener('load', function () {
+    const modal = document.querySelector('.loading-modal');
+    if (modal) modal.remove();
+});
 
 // 全屏按钮事件
 document.getElementById('full-screen-btn').addEventListener('click', () => { 
