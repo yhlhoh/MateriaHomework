@@ -1,10 +1,13 @@
 // ==================== 1. 导入依赖 ====================
 import {
     argbFromHex,
-    themeFromSourceColor,
     hexFromArgb,
-    sourceColorFromImageBytes,
-} from '@material/material-color-utilities';
+    argbFromRgb,
+    QuantizerCelebi,
+    Score,
+    CorePalette,
+    Hct
+    } from '@material/material-color-utilities';
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
 
@@ -44,7 +47,6 @@ async function replaceIconMasks(container = document) {
             const url = matches[1];
             if (!url) continue;
 
-            // 从缓存或网络获取SVG文本
             let svgText;
             if (svgCache.has(url)) {
                 svgText = svgCache.get(url);
@@ -60,23 +62,17 @@ async function replaceIconMasks(container = document) {
             const svgEl = doc.documentElement;
             if (svgEl.tagName !== 'svg') throw new Error('不是有效的SVG');
 
-            // 创建新的SVG元素 (保留原有属性)
             const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            // 复制所有属性
             for (const attr of svgEl.attributes) {
                 newSvg.setAttribute(attr.name, attr.value);
             }
-            // 移动子节点
             while (svgEl.firstChild) {
                 newSvg.appendChild(svgEl.firstChild);
             }
 
-            // 设置类: 保留原类并添加 icon-svg (移除可能冲突的mask样式)
             newSvg.setAttribute('class', span.className + ' icon-svg');
-            // 强制使用 currentColor 以便主题控制
             newSvg.removeAttribute('fill');
             newSvg.setAttribute('fill', 'currentColor');
-            // 确保viewBox存在（若缺失且宽高存在，粗略处理）
             if (!newSvg.hasAttribute('viewBox') && newSvg.hasAttribute('width') && newSvg.hasAttribute('height')) {
                 const w = parseFloat(newSvg.getAttribute('width'));
                 const h = parseFloat(newSvg.getAttribute('height'));
@@ -173,7 +169,6 @@ function renderUI() {
         }
     });
 
-    // 新DOM生成后，将里面的占位.icon-mask替换为内联SVG
     replaceIconMasks(taskList);
     replaceIconMasks(restorePanel);
 }
@@ -198,54 +193,195 @@ function saveState() {
     localStorage.setItem('kanban_data', JSON.stringify(appState));
 }
 
-// ==================== 5. 背景采样与莫奈取色 ====================
-async function getImageDataFromFile(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.crossOrigin = 'Anonymous';
-            img.src = e.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
-                resolve(ctx.getImageData(0, 0, img.width, img.height).data);
-            };
-            img.onerror = reject;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+// ==================== 5. 主题色板核心 (Palette & Theme) ====================
+
+class PaletteScheme {
+  static mergeCorePalette({ primary, secondary, tertiary, neutral }) {
+    const pCore = CorePalette.of(primary);
+    return {
+      pCore,
+      sCore: secondary ? CorePalette.of(secondary) : pCore,
+      tCore: tertiary ? CorePalette.of(tertiary) : pCore,
+      nCore: neutral ? CorePalette.of(neutral) : pCore
+    };
+  }
+
+  static mergeTonal({ secondary, tertiary }) {
+    return {
+      sTonal: secondary ? 'a1' : 'a2',
+      tTonal: tertiary ? 'a1' : 'a3'
+    };
+  }
 }
 
+/**
+ * 提高颜色的对比度/鲜艳度
+ * @param {number} argbInt - 原始的 ARGB 整数颜色
+ * @param {number} toneOffset - 明度偏移量（负数变暗，正数变亮）
+ * @param {number} chromaOffset - 饱和度偏移量（正数变鲜艳）
+ */
+function enhanceContrast(argbInt, toneOffset = -10, chromaOffset = 15) {
+    const hct = Hct.fromInt(argbInt);
+    
+    // 亮色模式下，稍微降低 Tone(变得更深一点) 可以显著提高与浅色背景的对比度
+    hct.tone = Math.max(0, Math.min(100, hct.tone + toneOffset));
+    
+    // 提高 Chroma 可以让颜色摆脱灰暗，变得更鲜艳夺目
+    hct.chroma = hct.chroma + chromaOffset;
+    
+    return hct.toInt();
+}
+class ThemeScheme {
+  static sourceToLight(source) {
+    const { pCore, sCore, tCore, nCore } = PaletteScheme.mergeCorePalette(source);
+    const { sTonal, tTonal } = PaletteScheme.mergeTonal(source);
+    return {
+      primary: pCore.a1.tone(60),
+      onPrimary: pCore.a1.tone(100),
+      primaryContainer: pCore.a1.tone(90),
+      onPrimaryContainer: pCore.a1.tone(10),
+      secondary: sCore[sTonal].tone(40),
+      onSecondary: sCore[sTonal].tone(100),
+      secondaryContainer: sCore[sTonal].tone(90),
+      onSecondaryContainer: sCore[sTonal].tone(10),
+      tertiary: tCore[tTonal].tone(40),
+      onTertiary: tCore[tTonal].tone(100),
+      tertiaryContainer: tCore[tTonal].tone(90),
+      onTertiaryContainer: tCore[tTonal].tone(10),
+      error: pCore.error.tone(40),
+      onError: pCore.error.tone(100),
+      errorContainer: pCore.error.tone(90),
+      onErrorContainer: pCore.error.tone(10),
+      background: nCore.n1.tone(99),
+      onBackground: nCore.n1.tone(10),
+      surface: nCore.n1.tone(99),
+      onSurface: nCore.n1.tone(10),
+      surfaceVariant: pCore.n2.tone(90),
+      onSurfaceVariant: pCore.n2.tone(30),
+      outline: pCore.n2.tone(50),
+      outlineVariant: pCore.n2.tone(80),
+      shadow: pCore.n1.tone(0),
+      scrim: pCore.n1.tone(0),
+      inverseSurface: pCore.n1.tone(20),
+      inverseOnSurface: pCore.n1.tone(95),
+      inversePrimary: pCore.a1.tone(80)
+    };
+  }
+
+  static sourceToDark(source) {
+    const { pCore, sCore, tCore, nCore } = PaletteScheme.mergeCorePalette(source);
+    const { sTonal, tTonal } = PaletteScheme.mergeTonal(source);
+    return {
+      primary: pCore.a1.tone(80),
+      onPrimary: pCore.a1.tone(20),
+      primaryContainer: pCore.a1.tone(30),
+      onPrimaryContainer: pCore.a1.tone(90),
+      secondary: sCore[sTonal].tone(80),
+      onSecondary: sCore[sTonal].tone(20),
+      secondaryContainer: sCore[sTonal].tone(30),
+      onSecondaryContainer: sCore[sTonal].tone(90),
+      tertiary: tCore[tTonal].tone(80),
+      onTertiary: tCore[tTonal].tone(20),
+      tertiaryContainer: tCore[tTonal].tone(30),
+      onTertiaryContainer: tCore[tTonal].tone(90),
+      error: pCore.error.tone(80),
+      onError: pCore.error.tone(20),
+      errorContainer: pCore.error.tone(30),
+      onErrorContainer: pCore.error.tone(80),
+      background: nCore.n1.tone(10),
+      onBackground: nCore.n1.tone(90),
+      surface: nCore.n1.tone(10),
+      onSurface: nCore.n1.tone(90),
+      surfaceVariant: pCore.n2.tone(30),
+      onSurfaceVariant: pCore.n2.tone(80),
+      outline: pCore.n2.tone(60),
+      outlineVariant: pCore.n2.tone(30),
+      shadow: pCore.n1.tone(0),
+      scrim: pCore.n1.tone(0),
+      inverseSurface: pCore.n1.tone(90),
+      inverseOnSurface: pCore.n1.tone(20),
+      inversePrimary: pCore.a1.tone(40)
+    };
+  }
+}
+
+// ==================== 6. 背景采样与主题应用 ====================
+const getImageData = async (image) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      reject(new Error('Could not get canvas context'));
+      return;
+    }
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      context.drawImage(img, 0, 0);
+      resolve(context.getImageData(0, 0, img.width, img.height).data);
+    };
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = image;
+  });
+};
+
+const getPixelArray = (imageData, quality) => {
+  const pixels = [];
+  for (let i = 0; i < imageData.length; i += i + quality) {
+    const offset = i * 4;
+    const r = imageData[offset];
+    const g = imageData[offset + 1];
+    const b = imageData[offset + 2];
+    const a = imageData[offset + 3];
+
+    if (typeof a === 'undefined' || a >= 125) {
+      if (!(r > 250 && g > 250 && b > 250)) {
+        const argb = argbFromRgb(r, g, b);
+        pixels.push(argb);
+      }
+    }
+  }
+  return pixels;
+};
+
+const colorFromImageUrl = async (image, quality = 10) => {
+  const imageData = await getImageData(image);
+  const pixelArray = getPixelArray(imageData, quality);
+  const result = QuantizerCelebi.quantize(pixelArray, 128);
+  const ranked = Score.score(result);
+  return ranked[0]; 
+};
+
 async function extractPrimaryColorFromFile(file) {
+    const url = URL.createObjectURL(file);
     try {
-        const pixelData = await getImageDataFromFile(file);
-        const sourceArgb = sourceColorFromImageBytes(pixelData);
-        return hexFromArgb(sourceArgb);
+        const argbColor = await colorFromImageUrl(url);
+        return hexFromArgb(argbColor);
     } catch (error) {
-        console.error('取色失败:', error);
-        return '#6750A4';
+        console.error('提取主色失败，使用默认颜色', error);
+        return '#9C4F4F';
+    } finally {
+        URL.revokeObjectURL(url);
     }
 }
 
 async function applyMaterialYouTheme(hexColor) {
     try {
         const sourceArgb = argbFromHex(hexColor);
-        const theme = themeFromSourceColor(sourceArgb);
-
-        const colors = {
-            primary: hexFromArgb(theme.schemes.light.primary),
-            secondaryContainer: hexFromArgb(theme.schemes.light.secondaryContainer),
-            tertiaryContainer: hexFromArgb(theme.schemes.light.tertiaryContainer),
-            background: hexFromArgb(theme.schemes.light.background),
-            onSurface: hexFromArgb(theme.schemes.light.onSurface)
-        };
         
-        document.documentElement.style.setProperty('--time-color', colors.tertiaryContainer);
+        // 使用自定义类生成亮色模式的所有颜色 (ARGB整数)
+        const schemeArgb = ThemeScheme.sourceToLight({ primary: sourceArgb });
+        
+        // 转换 ARGB 整数到 Hex 字符串
+        const colors = {};
+        for (const [key, value] of Object.entries(schemeArgb)) {
+            colors[key] = hexFromArgb(value);
+        }
+        
+        // 应用到 DOM 变量
+        document.documentElement.style.setProperty('--time-color', colors.primary);
         document.documentElement.style.setProperty('--item-bg', colors.secondaryContainer);
         document.documentElement.style.setProperty('--tag-bg', colors.tertiaryContainer);
         document.documentElement.style.setProperty('--text-color', colors.onSurface);
@@ -257,12 +393,12 @@ async function applyMaterialYouTheme(hexColor) {
     } catch (error) {
         console.warn('主题生成失败，使用默认颜色', error);
         const defaultColors = {
-            primary: '#FFA3B1',
+            primaryContainer: '#FFA3B1',
             secondaryContainer: '#FAE4E7',
             tertiaryContainer: '#FCE0C6',
             onSurface: '#3E1914'
         };
-        document.documentElement.style.setProperty('--time-color', defaultColors.tertiary);
+        document.documentElement.style.setProperty('--time-color', defaultColors.primaryContainer);
         document.documentElement.style.setProperty('--item-bg', defaultColors.secondaryContainer);
         document.documentElement.style.setProperty('--tag-bg', defaultColors.tertiaryContainer);
         document.documentElement.style.setProperty('--text-color', defaultColors.onSurface);
@@ -271,7 +407,7 @@ async function applyMaterialYouTheme(hexColor) {
     }
 }
 
-// ==================== 6. 图片操作 ====================
+// ==================== 7. 图片操作 ====================
 let savedCustomImages = [];
 let currentBgObjectUrl = null;
 
@@ -348,7 +484,7 @@ function createCustomImgElement(id, file) {
     document.getElementById('custom-images-container').appendChild(img);
 }
 
-// ==================== 7. 时钟 ====================
+// ==================== 8. 时钟 ====================
 function updateClock() {
     const now = new Date();
     document.getElementById('hours').textContent = String(now.getHours()).padStart(2, '0');
@@ -357,7 +493,7 @@ function updateClock() {
     document.getElementById('date').textContent = `${days[now.getDay()]}, ${now.getMonth() + 1}月${now.getDate()}日`;
 }
 
-// ==================== 8. 截图导出优化 ====================
+// ==================== 9. 截图导出优化 ====================
 function disableTransitionsTemp() {
     const style = document.createElement('style');
     style.id = 'temp-disable-transitions';
@@ -402,31 +538,27 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     }
 });
 
-// ==================== 9. 初始化 ====================
+// ==================== 10. 初始化 ====================
 setInterval(updateClock, 1000);
 updateClock();
 initData();
 loadImages();
 
-// 替换左下角固定按钮中的图标 (等待DOM就绪)
 setTimeout(() => {
     replaceIconMasks(document.querySelector('.controls'));
 }, 100);
 
-// 设置默认主题 (如果没有背景图片)
 setTimeout(() => {
     if (!document.body.style.backgroundImage || document.body.style.backgroundImage === 'url("assets/background.png")') {
         applyMaterialYouTheme('#9C4F4F');
     }
 }, 500);
 
-// 移除加载模态框
 window.addEventListener('load', function () {
     const modal = document.querySelector('.loading-modal');
     if (modal) modal.remove();
 });
 
-// 全屏按钮事件
 document.getElementById('full-screen-btn').addEventListener('click', () => { 
     if (screenfull.isEnabled) screenfull.toggle(); 
 });
