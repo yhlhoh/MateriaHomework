@@ -264,7 +264,7 @@ async function applyMaterialYouTheme(hexColor) {
         };
         document.documentElement.style.setProperty('--time-color', defaultColors.primary);
         document.documentElement.style.setProperty('--item-bg', defaultColors.secondaryContainer);
-        document.documentElement.style.setProperty('--tag-bg', defaultColors.tertiaryContainer);
+        document.documentElement.style.setProperty('--tag-bg', defaultColors.tertiary);
         document.documentElement.style.setProperty('--text-color', defaultColors.onSurface);
         document.documentElement.style.setProperty('--btn-hover', defaultColors.tertiaryContainer);
         return defaultColors;
