@@ -329,7 +329,7 @@ const getImageData = async (image) => {
 
 const getPixelArray = (imageData, quality) => {
   const pixels = [];
-  for (let i = 0; i < imageData.length; i += i + quality) {
+  for (let i = 0; i < imageData.length; i += quality*4) {
     const offset = i * 4;
     const r = imageData[offset];
     const g = imageData[offset + 1];
