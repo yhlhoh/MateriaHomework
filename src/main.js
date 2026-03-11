@@ -236,7 +236,7 @@ class ThemeScheme {
     const { pCore, sCore, tCore, nCore } = PaletteScheme.mergeCorePalette(source);
     const { sTonal, tTonal } = PaletteScheme.mergeTonal(source);
     return {
-      primary: pCore.a1.tone(60),
+      primary: pCore.a1.tone(40),
       onPrimary: pCore.a1.tone(100),
       primaryContainer: pCore.a1.tone(90),
       onPrimaryContainer: pCore.a1.tone(10),
