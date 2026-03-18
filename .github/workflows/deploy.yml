@@ -32,7 +32,14 @@ jobs:
 
       - name: Build
         run: npm run build
-        
+
+      - name: Inject commit hash and build time
+        run: 
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "console.log('Commit: $COMMIT_HASH'); console.log('Build Time(UTC): $BUILD_TIME');" > dist/info.js
+          sed -i '/<\/head>/i <script src="info.js"><\/script>' dist/index.html
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
