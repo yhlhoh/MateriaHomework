@@ -6,7 +6,11 @@
     <title>作业看板</title>
     <!-- Google Sans 字体 -->
     <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
-    <style>
+    <style>:
+        root {
+            --task-scale: 1;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -25,7 +29,6 @@
             color: var(--text-color, #3E1914);
         }
 
-        /* 加载模态框 */
         .loading-modal {
             position: absolute;
             background-color: #000000;
@@ -39,7 +42,6 @@
             justify-content: center;
         }
 
-        /* 左下角控制栏 */
         .controls {
             position: absolute;
             bottom: 25px;
@@ -49,7 +51,6 @@
             gap: 12px;
         }
 
-        /* 左上角自定义图片容器 - 原始大小，无边框 */
         .custom-images {
             position: absolute;
             top: 20px;
@@ -72,7 +73,6 @@
         }
         .custom-images img:hover { transform: scale(1.02); }
 
-        /* 主布局区域 */
         .container {
             display: flex;
             width: 100vw;
@@ -81,7 +81,6 @@
             gap: 4vw;
         }
 
-        /* 左侧时间区域 */
         .left-panel {
             flex: 0 0 30%;
             display: flex;
@@ -107,31 +106,28 @@
             color: var(--time-color, #FFA3B1);
         }
 
-        /* 右侧作业列表区域 */
         .right-panel {
             display: flex;
-            //align-items: center;
             justify-content: center;
-            //overflow-y: auto; 
+            max-height: 100%;
+            overflow: hidden; /* 改为 hidden，靠缩放适配，不走滚动 */
             flex: 1;
             flex-direction: column;
-            gap: 1.5vh;
-            height: 100%;
-            padding-bottom: 50px;
+            gap: calc(1.5vh * var(--task-scale));
         }
 
         .task-item {
             background-color: var(--item-bg, #FAE4E7);
-            border-radius: 50px;
-            padding: 10px 20px 10px 10px;
+            border-radius: calc(50px * var(--task-scale));
+            padding: calc(10px * var(--task-scale)) calc(20px * var(--task-scale)) calc(10px * var(--task-scale)) calc(10px * var(--task-scale));
             display: flex;
             position: relative;
-            margin-top: 10px;
-            margin-bottom: 10px;
+            margin-top: calc(10px * var(--task-scale));
+            margin-bottom: calc(10px * var(--task-scale));
             transition: background-color 0.3s ease, transform 0.3s;
-            min-height: 80px;
             animation: fadeIn 0.4s ease forwards;
             box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            min-height: 0;
         }
 
         @keyframes fadeIn {
@@ -141,20 +137,19 @@
 
         .subject-tag {
             background-color: var(--tag-bg, #FCE0C6);
-            border-radius: 40px;
-            padding: 12px 25px;
+            border-radius: calc(35px * var(--task-scale));
+            padding: calc(12px * var(--task-scale)) calc(25px * var(--task-scale));
             display: flex;
             align-items: center;
-            max-height: 70px;
-            gap: 12px;
+            max-height: calc(70px * var(--task-scale));
+            gap: calc(12px * var(--task-scale));
             flex-shrink: 0;
             color: var(--text-color, #3E1914);
             font-weight: bold;
-            font-size: 30px;
-            margin-right: 20px;
+            font-size: calc(30px * var(--task-scale));
+            margin-right: calc(20px * var(--task-scale));
         }
 
-        /* 内联SVG通用样式：继承当前文字颜色，自适应大小 */
         .icon-svg {
             display: inline-block;
             fill: currentColor;
@@ -163,24 +158,23 @@
             vertical-align: middle;
         }
 
-        /* 针对subject-tag里的图标固定高度，宽度自适应 */
         .subject-tag .icon-svg {
             height: 1.2em;
             width: auto;
         }
 
-        /* 任务内容区域 */
         .task-content {
             flex: 1;
-            height: 100%;
+            height: auto;
+            min-height:0;
             outline: none;
-            align-self: center;
-            align-items: center;
+            align-self: stretch;  
             color: var(--text-color, #3E1914);
-            font-size: 40px;
-            line-height: 1.4;
+            font-size: calc(40px * var(--task-scale));
+            line-height: 1.32;
             font-weight: bold;
             word-break: break-all;
+            overflow-wrap: anywhere;  
             white-space: pre-wrap;
             cursor: text;
         }
@@ -195,17 +189,17 @@
             background: #fff;
             border: none;
             color: #d32f2f;
-            width: 40px;
-            height: 40px;
+            width: calc(40px * var(--task-scale));
+            height: calc(40px * var(--task-scale));
             border-radius: 50%;
             cursor: pointer;
-            font-size: 24px;
+            font-size: calc(24px * var(--task-scale));
             font-weight: bold;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-left: 10px;
-            margin-top: 8px;
+            margin-left: calc(10px * var(--task-scale));
+            margin-top: calc(8px * var(--task-scale));
             opacity: 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             transition: all 0.2s;
@@ -216,7 +210,6 @@
         .delete-btn:hover { background: #ffeaea; transform: scale(1.1); }
         .task-item:hover .delete-btn { opacity: 1; }
 
-        /* 右下角恢复面板 - 圆形小图标 */
         .restore-panel {
             position: fixed;
             bottom: 30px;
@@ -225,7 +218,7 @@
             flex-direction: row-reverse;
             gap: 16px;
             z-index: 1000;
-            flex-wrap: wrap-reverse;
+            flex-wrap: nowrap; /* 改这里：不换行 */
             max-width: 420px;
             pointer-events: none;
         }
@@ -246,7 +239,7 @@
             transition: all 0.3s;
             position: relative;
             border: 2px solid rgba(255,250,240,0.6);
-            color: var(--text-color, #3E1914);  /* 让图标继承此颜色 */
+            color: var(--text-color, #3E1914);
         }
 
         .primary-btn:hover {
@@ -278,7 +271,7 @@
             opacity: 1;
             transform: translateY(0);
         }
-    </style>
+</style>
 </head>
 <body>
     <div class="loading-modal">

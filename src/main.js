@@ -562,3 +562,70 @@ window.addEventListener('load', function () {
 document.getElementById('full-screen-btn').addEventListener('click', () => { 
     if (screenfull.isEnabled) screenfull.toggle(); 
 });
+
+document.addEventListener("DOMContentLoaded", () => {
+    const root = document.documentElement;
+    const panel = document.querySelector(".right-panel");
+    if (!panel) return;
+
+    const MIN_SCALE = 0.55;
+    const MAX_SCALE = 1;
+    const EPS = 0.002;
+
+    let rafId = 0;
+
+    function setScale(v) {
+        root.style.setProperty("--task-scale", String(v));
+    }
+
+    function clearInlineFontSize() {
+        panel.querySelectorAll(".task-content").forEach(el => {
+            el.style.fontSize = "";
+        });
+    }
+
+    function fits() {
+        return panel.scrollHeight <= panel.clientHeight + 0.5;
+    }
+
+    function recomputeScale() {
+        clearInlineFontSize();
+
+        setScale(MAX_SCALE);
+        panel.getBoundingClientRect();
+
+        if (fits()) return;
+
+        let lo = MIN_SCALE;
+        let hi = MAX_SCALE;
+
+        while (hi - lo > EPS) {
+            const mid = (lo + hi) / 2;
+            setScale(mid);
+            panel.getBoundingClientRect();
+
+            if (fits()) lo = mid;
+            else hi = mid;
+        }
+
+        setScale(lo);
+    }
+
+    function schedule() {
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(recomputeScale);
+    }
+
+    panel.addEventListener("input", schedule, true);
+
+    const mo = new MutationObserver(schedule);
+    mo.observe(panel, { childList: true, subtree: true, characterData: true });
+
+    const ro = new ResizeObserver(schedule);
+    ro.observe(panel);
+    ro.observe(document.body);
+
+    window.addEventListener("resize", schedule);
+
+    requestAnimationFrame(() => requestAnimationFrame(recomputeScale));
+});
