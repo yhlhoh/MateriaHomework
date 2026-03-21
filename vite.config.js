@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate', // 自动更新 Service Worker
-      includeAssets: ['favicon.ico', 'favicon.png'], 
+      includeAssets: ['assets/favicon_192x.png', 'assets/favicon_512x.png'],
       manifest: {
         name: '作业看板',
         short_name: '作业看板',
@@ -15,12 +15,16 @@ export default defineConfig({
         display: 'standalone',
         scope: '/',
         start_url: '/',
-        icons: [
+        "icons": [
           {
-            src: '/favicon.png',
-            sizes: '128x128',
-            type: 'image/png',
-            purpose: 'any maskable'
+            "src": "/assets/favicon_192x.png",
+            "sizes": "192x192",
+            "type": "image/png"
+          },
+          {
+            "src": "/assets/favicon_512x.png",
+            "sizes": "512x512",
+            "type": "image/png"
           }
         ]
       },
