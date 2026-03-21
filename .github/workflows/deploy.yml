@@ -1,33 +1,61 @@
-build:
-  runs-on: ubuntu-latest
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+name: Deploy to GitHub Pages
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '23'
-        cache: 'npm'
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
-    - name: Install dependencies
-      run: npm ci
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
-    - name: Build
-      run: npm run build
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
-    - name: Inject commit hash and build time
-      run: |
-        mkdir -p dist
-        COMMIT_HASH=$(git rev-parse --short HEAD)
-        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        echo "console.log('Commit: $COMMIT_HASH'); console.log('Build Time(UTC): $BUILD_TIME');" > dist/info.js
-        sed -i 's|</head>|<script src="info.js"></script>\n</head>|' dist/index.html
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup Pages
-      uses: actions/configure-pages@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+          cache: 'npm'
 
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: './dist'
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Inject commit hash and build time
+        run: |
+          mkdir -p dist
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "console.log('Commit: $COMMIT_HASH'); console.log('Build Time(UTC): $BUILD_TIME');" > dist/info.js
+          sed -i 's|</head>|<script src="info.js"></script>\n</head>|' dist/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
