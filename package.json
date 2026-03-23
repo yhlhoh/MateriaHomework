@@ -11,7 +11,8 @@
   "dependencies": {
     "@material/material-color-utilities": "^0.2.0",
     "html2canvas": "^1.4.1",
-    "screenfull": "^6.0.2"
+    "screenfull": "^6.0.2",
+    "sober": "^1.1.9"
   },
   "devDependencies": {
     "vite": "^7.3.1",
