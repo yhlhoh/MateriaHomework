@@ -14,8 +14,6 @@
 
         * {
             box-sizing: border-box;
-            margin: 0;
-            padding: 0;
         }
 
         body {
@@ -231,21 +229,16 @@
             width: 58px;
             height: 58px;
             background-color: var(--tag-bg, #FCE0C6);
-            border-radius: 50%;
             display: flex;
+            border-radius:50%;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             box-shadow: 0 6px 14px rgba(0,0,0,0.2);
+            border: 1px solid transparent;
             transition: all 0.3s;
             position: relative;
-            border: 2px solid rgba(255,250,240,0.6);
             color: var(--text-color, #3E1914);
-        }
-
-        .primary-btn:hover {
-            transform: scale(1.18) translateY(-6px);
-            background-color: var(--item-bg, #FAE4E7);
         }
 
         .primary-btn .icon-svg {
@@ -294,10 +287,17 @@
             <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
             <s-ripple attached="true"></s-ripple>
         </button>
-        <button id="clear-all-btn" class="primary-btn" data-name="清除内容">
+        <s-dialog>
+        <button id="clear-all-btn" class="primary-btn" data-name="清除内容" slot="trigger">
             <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
             <s-ripple attached="true"></s-ripple>
         </button>
+            <div slot="headline"> 提示 </div>
+            <div slot="text">将会删除所有内容、背景和图片，是否继续？
+            </div>
+            <s-button slot="action" type="text">取消</s-button>
+            <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetAll(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
+            </s-dialog>
         <button id="save-btn" class="primary-btn" data-name="保存图片">
             <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true"></span>
             <s-ripple attached="true"></s-ripple>

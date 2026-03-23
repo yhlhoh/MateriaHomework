@@ -196,8 +196,15 @@ function saveState() {
 }
 
 function resetAll() {
-    localStorage.clear()
+    const deletePromise = new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase('KanbanDB');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject();
+    });
+        localStorage.clear();
 }
+window.resetAll = resetAll;
+
 // ==================== 5. 主题色板核心 (Palette & Theme) ====================
 
 class PaletteScheme {
@@ -567,10 +574,11 @@ window.addEventListener('load', function () {
 document.getElementById('full-screen-btn').addEventListener('click', () => { 
     if (screenfull.isEnabled) screenfull.toggle(); 
 });
+//document.getElementById('clear-all-confirm-btn').addEventListener('click', () => { 
+   // resetAll();
+//});
 
-document.getElementById('clear-all-btn').addEventListener('click', () => { 
-     Dialog.builder({ headline: '提示', content: '将会删除全部内容。是否继续？'});
-});
+
 
 document.addEventListener("DOMContentLoaded", () => {
     const root = document.documentElement;
