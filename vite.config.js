@@ -29,7 +29,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'], // 预缓存文件
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,txt,woff2}'], // 预缓存文件
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

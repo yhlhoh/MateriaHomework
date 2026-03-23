@@ -322,6 +322,20 @@
     <!-- 右下角恢复区 -->
     <div class="restore-panel" id="restore-panel"></div>
 
+    <script>
+          try {
+    const response = fetch('/version.txt');
+    if (!response.ok) {
+      // 文件不存在（404）或其他错误
+      console.warn(`Version file not found (status: ${response.status})`);
+    }
+    else {
+    const version = response.text();
+    console.log(`Version: ${version.trim()}`);}
+  } catch (error) {
+    console.error('Failed to fetch version file:', error);
+  }
+    </script>
     <script type="module" src="./src/main.js"></script>
 </body>
 </html>

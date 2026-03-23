@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "echo $(git rev-parse --short HEAD) > public/version.txt",
     "build": "vite build",
     "preview": "vite preview"
   },
