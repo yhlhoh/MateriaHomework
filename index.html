@@ -7,7 +7,7 @@
     <!-- Google Sans 字体 -->
     <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
     <link rel="icon" href="./assets/favicon_512x.png" type="image/png">
-    <style>:
+    <style>
         root {
             --task-scale: 1;
         }
@@ -284,15 +284,23 @@
     <div class="controls">
         <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
             <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
+            <s-ripple attached="true"></s-ripple>
         </button>
         <button id="img-add-btn" class="primary-btn" data-name="添加图片">
             <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
+            <s-ripple attached="true"></s-ripple>
         </button>
         <button id="full-screen-btn" class="primary-btn" data-name="切换全屏">
             <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
+            <s-ripple attached="true"></s-ripple>
+        </button>
+        <button id="clear-all-btn" class="primary-btn" data-name="清除内容">
+            <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
+            <s-ripple attached="true"></s-ripple>
         </button>
         <button id="save-btn" class="primary-btn" data-name="保存图片">
             <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true"></span>
+            <s-ripple attached="true"></s-ripple>
         </button>
     </div>
 

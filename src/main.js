@@ -10,6 +10,7 @@ import {
     } from '@material/material-color-utilities';
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
+import { Dialog,Ripple } from 'sober'
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -140,6 +141,7 @@ function renderUI() {
                     <span>${subject.name}</span>
                 </div>
                 <div class="task-content" contenteditable="true">${subject.content}</div>
+                <s-ripple attached="true"></s-ripple>
                 <button class="delete-btn" title="隐藏科目">×</button>
             `;
 
@@ -160,7 +162,7 @@ function renderUI() {
             const btn = document.createElement('div');
             btn.className = 'restore-btn primary-btn';
             btn.setAttribute('data-name', '恢复 ' + subject.name);
-            btn.innerHTML = `<span class="icon-mask" style="--icon-url: url('${subject.icon}')" aria-hidden="true"></span>`;
+            btn.innerHTML = `<span class="icon-mask" style="--icon-url: url('${subject.icon}')" aria-hidden="true"></span><s-ripple attached="true"></s-ripple>`;
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 restoreSubject(index);
@@ -193,6 +195,9 @@ function saveState() {
     localStorage.setItem('kanban_data', JSON.stringify(appState));
 }
 
+function resetAll() {
+    localStorage.clear()
+}
 // ==================== 5. 主题色板核心 (Palette & Theme) ====================
 
 class PaletteScheme {
@@ -561,6 +566,10 @@ window.addEventListener('load', function () {
 
 document.getElementById('full-screen-btn').addEventListener('click', () => { 
     if (screenfull.isEnabled) screenfull.toggle(); 
+});
+
+document.getElementById('clear-all-btn').addEventListener('click', () => { 
+     Dialog.builder({ headline: '提示', content: '将会删除全部内容。是否继续？'});
 });
 
 document.addEventListener("DOMContentLoaded", () => {
