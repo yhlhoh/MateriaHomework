@@ -294,18 +294,23 @@ document.getElementById('img-add-btn').addEventListener('click', () => {
 
 function createCustomImgElement(id, file) {
     const url = URL.createObjectURL(file);
+    const container = document.createElement('div');
+    const ripple = document.createElement('s-ripple');
+    ripple.attached = 'true'
     const img = document.createElement('img');
     img.src = url;
     img.title = "点击删除此图片";
 
     img.onclick = async function() {
-        this.remove();
+        setTimeout(this.remove.bind(this), 100);
         URL.revokeObjectURL(url);
         savedCustomImages = savedCustomImages.filter(item => item.id !== id);
         await setDB('custom_images', savedCustomImages);
     };
 
-    document.getElementById('custom-images-container').appendChild(img);
+    document.getElementById('custom-images-container').appendChild(container);
+    container.appendChild(img);
+    container.appendChild(ripple);
 }
 
 // ==================== 7. 时钟 ====================
@@ -371,7 +376,10 @@ updateClock();
     await loadImages();                  // 等待背景图加载和主题生成
     await replaceIconMasks(document.querySelector('.controls'));
     const modal = document.querySelector('.loading-modal');
-    if (modal) modal.remove();
+    modal.classList.add('fade-out');
+    modal.addEventListener('transitionend', () => {
+    modal.remove();
+    });
 })();
 
 document.getElementById('full-screen-btn').addEventListener('click', () => {
