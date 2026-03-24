@@ -272,76 +272,78 @@
 </style>
 </head>
 <body>
-    <div class="loading-modal">
-        <h1 style="color: #000000">正在加载</h1>
-        <br>
-        <s-circular-progress indeterminate="true"></s-circular-progress>
-    </div>
-    <input type="file" id="bg-input" accept="image/*" style="display:none">
-    <input type="file" id="img-input" accept="image/*" multiple style="display:none">
+    <s-page style="background-color: rgba(255, 0, 0, 0)">
+        <div class="loading-modal">
+            <h1 style="color: #000000">正在加载</h1>
+            <br>
+            <s-circular-progress indeterminate="true"></s-circular-progress>
+        </div>
+        <input type="file" id="bg-input" accept="image/*" style="display:none">
+        <input type="file" id="img-input" accept="image/*" multiple style="display:none">
 
-    <div class="controls">
-        <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
-            <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
-            <s-ripple attached="true"></s-ripple>
-        </button>
-        <button id="img-add-btn" class="primary-btn" data-name="添加图片">
-            <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
-            <s-ripple attached="true"></s-ripple>
-        </button>
-        <button id="full-screen-btn" class="primary-btn" data-name="切换全屏">
-            <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
-            <s-ripple attached="true"></s-ripple>
-        </button>
-        <s-dialog>
-        <button id="clear-all-btn" class="primary-btn" data-name="清除内容" slot="trigger">
-            <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
-            <s-ripple attached="true"></s-ripple>
-        </button>
-            <div slot="headline"> 提示 </div>
-            <div slot="text">将会删除所有内容、背景和图片，是否继续？
-            </div>
-            <s-button slot="action" type="text">取消</s-button>
-            <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetAll(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
-            </s-dialog>
-        <button id="save-btn" class="primary-btn" data-name="保存图片">
-            <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true"></span>
-            <s-ripple attached="true"></s-ripple>
-        </button>
-    </div>
-
-    <!-- 左上角自定义图片容器 -->
-    <div class="custom-images" id="custom-images-container"></div>
-
-    <div class="container">
-        <div class="left-panel">
-            <div class="clock">
-                <div class="hours" id="hours">--</div>
-                <div class="minutes" id="minutes">--</div>
-                <div class="date" id="date">--</div>
-            </div>
+        <div class="controls">
+            <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
+                <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple>
+            </button>
+            <button id="img-add-btn" class="primary-btn" data-name="添加图片">
+                <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple>
+            </button>
+            <button id="full-screen-btn" class="primary-btn" data-name="切换全屏">
+                <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple>
+            </button>
+            <s-dialog>
+            <button id="clear-all-btn" class="primary-btn" data-name="清除内容" slot="trigger">
+                <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple>
+            </button>
+                <div slot="headline"> 提示 </div>
+                <div slot="text">将会删除所有内容、背景和图片，是否继续？
+                </div>
+                <s-button slot="action" type="text">取消</s-button>
+                <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetAll(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
+                </s-dialog>
+            <button id="save-btn" class="primary-btn" data-name="保存图片">
+                <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple>
+            </button>
         </div>
 
-        <div class="right-panel" id="task-list"></div>
-    </div>
+        <!-- 左上角自定义图片容器 -->
+        <div class="custom-images" id="custom-images-container"></div>
 
-    <!-- 右下角恢复区 -->
-    <div class="restore-panel" id="restore-panel"></div>
+        <div class="container">
+            <div class="left-panel">
+                <div class="clock">
+                    <div class="hours" id="hours">--</div>
+                    <div class="minutes" id="minutes">--</div>
+                    <div class="date" id="date">--</div>
+                </div>
+            </div>
 
-    <script>
-          try {
-    const response = fetch('/version.txt');
-    if (!response.ok) {
-      // 文件不存在（404）或其他错误
-      console.warn(`Version file not found (status: ${response.status})`);
+            <div class="right-panel" id="task-list"></div>
+        </div>
+
+        <!-- 右下角恢复区 -->
+        <div class="restore-panel" id="restore-panel"></div>
+
+        <script>
+            try {
+        const response = fetch('/version.txt');
+        if (!response.ok) {
+        // 文件不存在（404）或其他错误
+        console.warn(`Version file not found (status: ${response.status})`);
+        }
+        else {
+        const version = response.text();
+        console.log(`Version: ${version.trim()}`);}
+    } catch (error) {
+        console.error('Failed to fetch version file:', error);
     }
-    else {
-    const version = response.text();
-    console.log(`Version: ${version.trim()}`);}
-  } catch (error) {
-    console.error('Failed to fetch version file:', error);
-  }
-    </script>
-    <script type="module" src="./src/main.js"></script>
+        </script>
+        <script type="module" src="./src/main.js"></script>
+    </s-page>
 </body>
 </html>
