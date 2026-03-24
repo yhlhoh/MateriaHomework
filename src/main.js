@@ -39,54 +39,58 @@ const svgCache = new Map();
 
 async function replaceIconMasks(container = document) {
     const masks = container.querySelectorAll('.icon-mask');
+    const promises = [];
     for (const span of masks) {
-        try {
-            const iconUrlVar = span.style.getPropertyValue('--icon-url').trim();
-            if (!iconUrlVar) continue;
-            const matches = iconUrlVar.match(/url\(['"]?(.*?)['"]?\)/);
-            if (!matches) continue;
-            const url = matches[1];
-            if (!url) continue;
+        promises.push((async () => {
+            try {
+                const iconUrlVar = span.style.getPropertyValue('--icon-url').trim();
+                if (!iconUrlVar) return;
+                const matches = iconUrlVar.match(/url\(['"]?(.*?)['"]?\)/);
+                if (!matches) return;
+                const url = matches[1];
+                if (!url) return;
 
-            let svgText;
-            if (svgCache.has(url)) {
-                svgText = svgCache.get(url);
-            } else {
-                const resp = await fetch(url);
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                svgText = await resp.text();
-                svgCache.set(url, svgText);
-            }
-
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(svgText, 'image/svg+xml');
-            const svgEl = doc.documentElement;
-            if (svgEl.tagName !== 'svg') throw new Error('不是有效的SVG');
-
-            const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            for (const attr of svgEl.attributes) {
-                newSvg.setAttribute(attr.name, attr.value);
-            }
-            while (svgEl.firstChild) {
-                newSvg.appendChild(svgEl.firstChild);
-            }
-
-            newSvg.setAttribute('class', span.className + ' icon-svg');
-            newSvg.removeAttribute('fill');
-            newSvg.setAttribute('fill', 'currentColor');
-            if (!newSvg.hasAttribute('viewBox') && newSvg.hasAttribute('width') && newSvg.hasAttribute('height')) {
-                const w = parseFloat(newSvg.getAttribute('width'));
-                const h = parseFloat(newSvg.getAttribute('height'));
-                if (!isNaN(w) && !isNaN(h)) {
-                    newSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+                let svgText;
+                if (svgCache.has(url)) {
+                    svgText = svgCache.get(url);
+                } else {
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    svgText = await resp.text();
+                    svgCache.set(url, svgText);
                 }
-            }
 
-            span.parentNode.replaceChild(newSvg, span);
-        } catch (err) {
-            console.warn('替换SVG失败:', err, span);
-        }
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(svgText, 'image/svg+xml');
+                const svgEl = doc.documentElement;
+                if (svgEl.tagName !== 'svg') throw new Error('不是有效的SVG');
+
+                const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                for (const attr of svgEl.attributes) {
+                    newSvg.setAttribute(attr.name, attr.value);
+                }
+                while (svgEl.firstChild) {
+                    newSvg.appendChild(svgEl.firstChild);
+                }
+
+                newSvg.setAttribute('class', span.className + ' icon-svg');
+                newSvg.removeAttribute('fill');
+                newSvg.setAttribute('fill', 'currentColor');
+                if (!newSvg.hasAttribute('viewBox') && newSvg.hasAttribute('width') && newSvg.hasAttribute('height')) {
+                    const w = parseFloat(newSvg.getAttribute('width'));
+                    const h = parseFloat(newSvg.getAttribute('height'));
+                    if (!isNaN(w) && !isNaN(h)) {
+                        newSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+                    }
+                }
+
+                span.parentNode.replaceChild(newSvg, span);
+            } catch (err) {
+                console.warn('替换SVG失败:', err, span);
+            }
+        })());
     }
+    await Promise.all(promises);
 }
 
 // ==================== 4. 全局状态与看板逻辑 ====================
@@ -121,10 +125,10 @@ function initData() {
     } else {
         appState = JSON.parse(JSON.stringify(defaultSubjects));
     }
-    renderUI();
+    return renderUI();
 }
 
-function renderUI() {
+async function renderUI() {
     const taskList = document.getElementById('task-list');
     const restorePanel = document.getElementById('restore-panel');
 
@@ -171,39 +175,9 @@ function renderUI() {
         }
     });
 
-    replaceIconMasks(taskList);
-    replaceIconMasks(restorePanel);
+    await replaceIconMasks(taskList);
+    await replaceIconMasks(restorePanel);
 }
-
-function deleteSubject(index, taskItem) {
-    taskItem.style.opacity = '0';
-    taskItem.style.transform = 'scale(0.9)';
-    setTimeout(() => {
-        appState[index].isDeleted = true;
-        saveState();
-        renderUI();
-    }, 220);
-}
-
-function restoreSubject(index) {
-    appState[index].isDeleted = false;
-    saveState();
-    renderUI();
-}
-
-function saveState() {
-    localStorage.setItem('kanban_data', JSON.stringify(appState));
-}
-
-function resetAll() {
-    const deletePromise = new Promise((resolve, reject) => {
-        const req = indexedDB.deleteDatabase('KanbanDB');
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject();
-    });
-        localStorage.clear();
-}
-window.resetAll = resetAll;
 
 // ==================== 5. 主题色板核心 (Palette & Theme) ====================
 
@@ -553,23 +527,24 @@ document.getElementById('save-btn').addEventListener('click', async () => {
 // ==================== 10. 初始化 ====================
 setInterval(updateClock, 1000);
 updateClock();
-initData();
-loadImages();
 
-setTimeout(() => {
-    replaceIconMasks(document.querySelector('.controls'));
-}, 100);
-
-setTimeout(() => {
-    if (!document.body.style.backgroundImage || document.body.style.backgroundImage === 'url("assets/background.png")') {
-        applyMaterialYouTheme('#9C4F4F');
-    }
-}, 500);
-
-window.addEventListener('load', function () {
+(async () => {
+    await initData();                     // 等待数据渲染和SVG替换
+    await loadImages();     
+    await replaceIconMasks(document.querySelector('.controls'));             // 等待背景图加载、主题提取和应用
+    await new Promise(resolve => {
+        if (document.body.style.backgroundImage && document.body.style.backgroundImage !== 'url("assets/background.png")') {
+            resolve();
+        } else {
+            setTimeout(() => {
+                applyMaterialYouTheme('#9C4F4F');
+                resolve();
+            }, 500);
+        }
+    });
     const modal = document.querySelector('.loading-modal');
     if (modal) modal.remove();
-});
+})();
 
 document.getElementById('full-screen-btn').addEventListener('click', () => { 
     if (screenfull.isEnabled) screenfull.toggle(); 
@@ -577,8 +552,6 @@ document.getElementById('full-screen-btn').addEventListener('click', () => {
 //document.getElementById('clear-all-confirm-btn').addEventListener('click', () => { 
    // resetAll();
 //});
-
-
 
 document.addEventListener("DOMContentLoaded", () => {
     const root = document.documentElement;
@@ -645,6 +618,7 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("resize", schedule);
 
     requestAnimationFrame(() => requestAnimationFrame(recomputeScale));
+
 });
 
 if ('serviceWorker' in navigator) {

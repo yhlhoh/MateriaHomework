@@ -31,7 +31,8 @@
 
         .loading-modal {
             position: absolute;
-            background-color: #000000;
+            display: block;
+            backdrop-filter: blur(20px);
             top: 0px;
             left: 0px;
             z-index: 114514;
@@ -267,11 +268,14 @@
             opacity: 1;
             transform: translateY(0);
         }
+    
 </style>
 </head>
 <body>
     <div class="loading-modal">
-        <h1 style="color: #FFFFFF">正在加载</h1>
+        <h1 style="color: #000000">正在加载</h1>
+        <br>
+        <s-circular-progress indeterminate="true"></s-circular-progress>
     </div>
     <input type="file" id="bg-input" accept="image/*" style="display:none">
     <input type="file" id="img-input" accept="image/*" multiple style="display:none">
