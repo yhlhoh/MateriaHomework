@@ -302,7 +302,8 @@ function createCustomImgElement(id, file) {
     img.title = "点击删除此图片";
 
     img.onclick = async function() {
-        setTimeout(this.remove.bind(this), 100);
+        this.classList.add('fade-out');
+        setTimeout(this.remove.bind(this), 300);
         URL.revokeObjectURL(url);
         savedCustomImages = savedCustomImages.filter(item => item.id !== id);
         await setDB('custom_images', savedCustomImages);

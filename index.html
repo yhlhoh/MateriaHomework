@@ -71,13 +71,18 @@
             max-height: calc(100vh - 100px);
             overflow-y: auto;
         }
-        .custom-images img {
+        .custom-images div img {
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+            opacity: 1;
             width: auto;
             height: auto;
             max-width: none;
             border: none;
+        }
+
+        .custom-images div img.fade-out {
+            opacity: 0!important;
         }
 
         .container {
