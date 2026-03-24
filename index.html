@@ -332,8 +332,8 @@
         <script>
             try {
         const response = fetch('/version.txt');
-        const version = response.text();
-        console.log(`Version: ${version.trim()}`);
+        const version = response.text;
+        console.log(`Version: ${version}`);
     } catch (error) {
         console.error('Failed to fetch version file:', error);
     }
