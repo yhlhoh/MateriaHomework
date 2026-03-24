@@ -339,13 +339,19 @@
         <div class="restore-panel" id="restore-panel"></div>
 
         <script>
-            try {
-                const response = await fetch('/version.txt');
-                const version = await response.text();
-                console.log(`Version: ${version}`);
-            } catch (error) {
-                console.error('Failed to fetch version file:', error);
-            }
+            (async function getVersion() {
+                try {
+                    const response = await fetch('/version.txt');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    const version = await response.text();
+                    console.log(`Version: ${version}`);
+                } catch (err) {
+                    console.error('Failed to fetch version file:', err);
+                }
+            })();
+            getVersion();
         </script>
         <script type="module" src="./src/main.js"></script>
     </s-page>
