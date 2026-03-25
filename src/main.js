@@ -180,6 +180,26 @@ async function renderUI() {
     await replaceIconMasks(restorePanel);
 }
 
+function deleteSubject(index, taskItem) {
+    taskItem.style.opacity = '0';
+    taskItem.style.transform = 'scale(0.9)';
+    setTimeout(() => {
+        appState[index].isDeleted = true;
+        saveState();
+        renderUI();
+    }, 220);
+}
+
+function restoreSubject(index) {
+    appState[index].isDeleted = false;
+    saveState();
+    renderUI();
+}
+
+function saveState() {
+    localStorage.setItem('kanban_data', JSON.stringify(appState));
+}
+
 // ==================== 5. 新主题应用：基于 sober-theme ====================
 /**
  * 确保页面中存在 <s-page> 元素，用于应用主题变量
