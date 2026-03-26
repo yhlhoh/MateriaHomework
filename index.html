@@ -280,8 +280,8 @@
         }
 
         .grid {
-  grid-template-columns: minmax(100px, auto) minmax(100px, auto);
-}
+            grid-template-columns: minmax(100px, auto) minmax(100px, auto);
+        }
 
     </style>
 </head>
@@ -344,24 +344,57 @@
         <div class="restore-panel" id="restore-panel"></div>
 
         <!-- 富文本编辑面板 -->
+        <!-- 富文本编辑面板 -->
         <s-dialog id="text-edit-panel">
             <div slot="headline"> 富文本编辑器 </div>
-            <div slot="text" style="width:100%;height:100%;">
-                <s-icon-button id="bold-btn">
-                <s-icon src="/assets/bold.svg"></s-icon>
-                </s-icon-button>
-                <s-icon-button id="size-increase-btn">
-                <s-icon src="/assets/size-increase.svg"></s-icon>
-                </s-icon-button>
-                <s-icon-button id="size-decrease-btn">
-                <s-icon src="/assets/size-decrease.svg"></s-icon>
-                </s-icon-button>
-                <s-icon-button id="add-image-btn">
-                <s-icon src="/assets/image.svg"></s-icon>
-                </s-icon-button>
-                <s-picker label="选择字体..." v-model.lazy="select">
-                </s-picker>
-                <!-- <s-text-field label="请输入文本" type="multiLine" style="min-height: 96px; padding: 10px; width: 100%;"></s-text-field> -->
+            <!-- 外层使用 Flex 纵向排布，内层编辑器使用纯粹的 block -->
+            <div slot="text" style="width:100%; max-height: 60vh; display: flex; flex-direction: column;">
+                
+                <!-- 工具栏 -->
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center;">
+                    <s-icon-button id="bold-btn" title="加粗">
+                        <s-icon src="/assets/bold.svg"></s-icon>
+                    </s-icon-button>
+                    <s-icon-button id="size-increase-btn" title="增大字号">
+                        <s-icon src="/assets/size-increase.svg"></s-icon>
+                    </s-icon-button>
+                    <s-icon-button id="size-decrease-btn" title="减小字号">
+                        <s-icon src="/assets/size-decrease.svg"></s-icon>
+                    </s-icon-button>
+                    <s-icon-button id="add-image-btn" title="插入图片">
+                        <s-icon src="/assets/image.svg"></s-icon>
+                    </s-icon-button>
+                    <!-- 选项直接写进 HTML -->
+                    <s-picker label="选择字体..." id="font-picker">
+                        <s-picker-item value="">默认字体</s-picker-item>
+                        <s-picker-item value="SimSun">宋体</s-picker-item>
+                        <s-picker-item value="SimHei">黑体</s-picker-item>
+                        <s-picker-item value="Microsoft YaHei">微软雅黑</s-picker-item>
+                        <s-picker-item value="KaiTi">楷体</s-picker-item>
+                        <s-picker-item value="FangSong">仿宋</s-picker-item>
+                        <s-picker-item value="Arial">Arial</s-picker-item>
+                        <s-picker-item value="Times New Roman">Times New Roman</s-picker-item>
+                    </s-picker>
+                </div>
+
+                <!-- 编辑器本体：脱离 Flex，解决选区蓝条拉满整个屏幕的诡异问题 -->
+                <div id="rich-editor" contenteditable="true" style="
+                    display: block;
+                    width: 100%;
+                    min-height: 200px;
+                    overflow-y: auto;
+                    border: 1px solid var(--s-color-outline, #ccc);
+                    border-radius: 12px;
+                    padding: 16px;
+                    box-sizing: border-box;
+                    background-color: var(--s-color-surface, #fff);
+                    color: var(--s-color-on-surface, #000);
+                    font-size: 38px;
+                    line-height: normal;
+                    outline: none;
+                    word-break: break-word;
+                "></div>
+
             </div>
             <s-button slot="action" type="text" id="text-edit-cancel">取消</s-button>
             <s-button slot="action" type="text" id="text-edit-confirm">确定</s-button>
