@@ -186,7 +186,7 @@ async function renderUI() {
 }
 
 function resetAll() {
-    indexedDB.deleteDatabase('KanbanDB');
+    //indexedDB.deleteDatabase('KanbanDB');
     localStorage.clear();
 }
 
