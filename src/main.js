@@ -12,6 +12,10 @@ import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
 import { Dialog, Ripple } from 'sober';
 import { createScheme } from 'sober-theme';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import { TextStyle } from '@tiptap/extension-text-style';   // 命名导入
+import { Image } from '@tiptap/extension-image';    
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -129,9 +133,6 @@ function initData() {
     return renderUI();
 }
 
-let currentEditIndex = null;
-let richEditor = null;
-
 async function renderUI() {
     const taskList = document.getElementById('task-list');
     const restorePanel = document.getElementById('restore-panel');
@@ -220,238 +221,146 @@ function updateTaskContent(index, newHtml) {
 }
 
 // ==================== 5. 富文本编辑器 ====================
-let editDialog = null;
-let savedRange = null;
-
-document.addEventListener('selectionchange', () => {
-    if (!richEditor) return;
-    const sel = window.getSelection();
-    if (sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        if (richEditor.contains(range.commonAncestorContainer)) {
-            savedRange = range.cloneRange();
-        }
-    }
+// 自定义文本样式扩展（支持 fontSize 和 fontFamily）
+// 自定义文本样式扩展（支持 fontSize 和 fontFamily）
+const CustomTextStyle = TextStyle.extend({
+  name: 'textStyle',
+  addAttributes() {
+    return {
+      fontSize: {
+        default: null,
+        parseHTML: element => element.style.fontSize,
+        renderHTML: attributes => {
+          if (!attributes.fontSize) return {};
+          return { style: `font-size: ${attributes.fontSize}` };
+        },
+      },
+      fontFamily: {
+        default: null,
+        parseHTML: element => element.style.fontFamily,
+        renderHTML: attributes => {
+          if (!attributes.fontFamily) return {};
+          return { style: `font-family: ${attributes.fontFamily}` };
+        },
+      },
+    };
+  },
+  addCommands() {
+    return {
+      setFontSize: size => ({ chain }) => {
+        return chain()
+          .setMark('textStyle', { fontSize: size })
+          .run();
+      },
+      unsetFontSize: () => ({ chain }) => {
+        return chain()
+          .setMark('textStyle', { fontSize: null })
+          .removeEmptyTextStyle()
+          .run();
+      },
+      setFontFamily: family => ({ chain }) => {
+        return chain()
+          .setMark('textStyle', { fontFamily: family })
+          .run();
+      },
+      unsetFontFamily: () => ({ chain }) => {
+        return chain()
+          .setMark('textStyle', { fontFamily: null })
+          .removeEmptyTextStyle()
+          .run();
+      },
+    };
+  },
 });
 
-
-function restoreSelection() {
-    if (!richEditor || !savedRange) return;
-    // 检查 range 是否还在文档内
-    let container = savedRange.commonAncestorContainer;
-    if (!document.body.contains(container)) {
-        // 无效 range，重置到编辑器末尾
-        richEditor.focus();
-        const range = document.createRange();
-        range.selectNodeContents(richEditor);
-        range.collapse(false);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        savedRange = range.cloneRange();
-        return;
-    }
-    richEditor.focus();
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(savedRange);
-}
-
-function flattenStyleSpans(node) {
-    if (node.nodeType === Node.ELEMENT_NODE) {
-        // 先递归处理子节点
-        for (let i = 0; i < node.childNodes.length; i++) {
-            flattenStyleSpans(node.childNodes[i]);
-        }
-
-        // 检查当前 span 是否是需要被移除的纯样式 span
-        if (node.tagName === 'SPAN') {
-            const hasOnlyStyleAttr = node.attributes.length === 1 && node.attributes[0].name === 'style';
-            const style = node.style;
-            const hasFontStyles = style.fontSize || style.fontFamily || style.lineHeight;
-            if (hasOnlyStyleAttr && hasFontStyles) {
-                // 将此 span 替换为它的子节点（保留子节点）
-                const parent = node.parentNode;
-                while (node.firstChild) {
-                    parent.insertBefore(node.firstChild, node);
-                }
-                parent.removeChild(node);
-                return; // 节点已移除，不再继续处理其样式属性
-            }
-        }
-
-        // 清除当前元素的内联字体样式（无论是否是 span）
-        if (node.style) {
-            node.style.fontSize = '';
-            node.style.fontFamily = '';
-            node.style.lineHeight = '';
-        }
-    } else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-        for (let i = 0; i < node.childNodes.length; i++) {
-            flattenStyleSpans(node.childNodes[i]);
-        }
-    }
-}
-
-/**
- * 应用样式到当前选区（光标或选中文本）
- * @param {Object} styles CSS 样式对象，如 { fontSize: '20px', fontFamily: 'Arial', lineHeight: '1.2' }
- */
-function applyStyleToSelection(styles) {
-    restoreSelection();
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-
-    const range = sel.getRangeAt(0);
-
-    if (range.collapsed) {
-        // 光标模式的处理（复用样式 span 或新建占位符）保持不变
-        let node = range.startContainer;
-        if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
-        let styleSpan = null;
-        while (node && node !== richEditor) {
-            if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'SPAN') {
-                const style = node.style;
-                if (style.fontSize || style.fontFamily || style.lineHeight) {
-                    styleSpan = node;
-                    break;
-                }
-            }
-            node = node.parentNode;
-        }
-
-        if (styleSpan) {
-            Object.assign(styleSpan.style, styles);
-            if (styleSpan.firstChild && styleSpan.firstChild.nodeType === Node.TEXT_NODE) {
-                range.setStart(styleSpan.firstChild, styleSpan.firstChild.length);
-                range.collapse(true);
-            } else {
-                const zeroWidth = document.createTextNode('\u200B');
-                styleSpan.appendChild(zeroWidth);
-                range.setStart(zeroWidth, 1);
-            }
-            sel.removeAllRanges();
-            sel.addRange(range);
-            savedRange = range.cloneRange();
-            return;
-        }
-
-        const span = document.createElement('span');
-        Object.assign(span.style, styles);
-        span.innerHTML = '&#8203;';
-        range.insertNode(span);
-        range.setStart(span.firstChild, 1);
-        range.setEnd(span.firstChild, 1);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        savedRange = range.cloneRange();
-        return;
-    }
-
-    // 有选中内容：提取内容 -> 完全扁平化 -> 包裹新样式
-    const contents = range.extractContents();
-    flattenStyleSpans(contents);  // 移除所有无用的样式 span 和样式属性
-
-    const wrapper = document.createElement('span');
-    Object.assign(wrapper.style, styles);
-    wrapper.appendChild(contents);
-
-    range.insertNode(wrapper);
-    range.selectNodeContents(wrapper);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    savedRange = range.cloneRange();
-}
-
-/**
- * 字号增减（基于当前选区第一个元素的字体大小）
- * @param {number} delta 增量（px）
- */
-function setFontSizeDelta(delta) {
-    let currentSize = 16;
-    const sel = window.getSelection();
-    if (sel.rangeCount > 0) {
-        const node = sel.anchorNode;
-        const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-        if (el) {
-            const fs = window.getComputedStyle(el).fontSize;
-            if (fs) currentSize = parseFloat(fs);
-        }
-    }
-    let newSize = currentSize + delta;
-    if (newSize < 8) newSize = 8;
-    if (newSize > 150) newSize = 150;
-    applyStyleToSelection({ fontSize: newSize + 'px', lineHeight: '1.2' });
-}
-
-/**
- * 设置字体族
- * @param {string} family 字体族名称，空字符串表示恢复默认
- */
-function setFontFamily(family) {
-    if (family) {
-        applyStyleToSelection({ fontFamily: family });
-    } else {
-        // 恢复默认字体：仅清除字体族，保留字号
-        const sel = window.getSelection();
-        if (sel.rangeCount) {
-            const range = sel.getRangeAt(0);
-            const contents = range.extractContents();
-            cleanupStyleNodes(contents); // 清理所有内联样式
-            range.insertNode(contents);
-            range.collapse(false);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            savedRange = range.cloneRange();
-        }
-    }
-}
+let editDialog = null;
+let currentEditor = null;
+let currentEditIndex = null;
 
 function initRichEditorDialog() {
     editDialog = document.getElementById('text-edit-panel');
-    richEditor = document.getElementById('rich-editor');
-    if (!editDialog || !richEditor) return;
+    const editorElement = document.getElementById('rich-editor');
 
-    // 确保编辑器基础行高为相对值
-    richEditor.style.lineHeight = '1.2';
+    if (!editDialog || !editorElement) return;
+
+    editorElement.style.lineHeight = '1.2';
+
+    // 添加样式消除段落边距
+    const style = document.createElement('style');
+    style.textContent = '#rich-editor p { margin: 0; }';
+    document.head.appendChild(style);
+
+    currentEditor = new Editor({
+        element: editorElement,
+        extensions: [
+            StarterKit.configure({
+                textStyle: false,
+                dropcursor: false, // 禁用拖拽光标扩展，避免错误
+            }),
+            CustomTextStyle,
+            Image.configure({
+                inline: true,
+                allowBase64: true,
+            }),
+        ],
+        content: '',
+        onUpdate: ({ editor }) => {
+            if (currentEditIndex !== null) {
+                const html = editor.getHTML();
+                updateTaskContent(currentEditIndex, html);
+            }
+        },
+    });
 
     bindRichEditorButtons();
 
     const confirmBtn = document.getElementById('text-edit-confirm');
     const cancelBtn = document.getElementById('text-edit-cancel');
 
-    if (confirmBtn) {
-        confirmBtn.onclick = () => {
-            if (currentEditIndex !== null && richEditor) {
-                updateTaskContent(currentEditIndex, richEditor.innerHTML);
-            }
-            editDialog.showed = false;
-        };
-    }
-    if (cancelBtn) {
-        cancelBtn.onclick = () => {
-            editDialog.showed = false;
-        };
-    }
+    if (confirmBtn) confirmBtn.onclick = () => (editDialog.showed = false);
+    if (cancelBtn) cancelBtn.onclick = () => (editDialog.showed = false);
 }
 
 function bindRichEditorButtons() {
     const boldBtn = document.getElementById('bold-btn');
     if (boldBtn) {
-        boldBtn.onclick = () => {
-            restoreSelection();
-            document.execCommand('bold', false, null);
-        };
+        boldBtn.onclick = () => currentEditor?.chain().focus().toggleBold().run();
     }
 
     const sizeIncreaseBtn = document.getElementById('size-increase-btn');
     if (sizeIncreaseBtn) {
-        sizeIncreaseBtn.onclick = () => setFontSizeDelta(4);
+        sizeIncreaseBtn.onclick = () => {
+            if (!currentEditor) return;
+            let currentSize = 16;
+            const attrs = currentEditor.getAttributes('textStyle');
+            if (attrs.fontSize) {
+                const match = attrs.fontSize.match(/\d+/);
+                if (match) currentSize = parseInt(match[0]);
+            }
+            let newSize = currentSize + 4;
+            if (newSize < 8) newSize = 8;
+            if (newSize > 150) newSize = 150;
+            currentEditor.chain().focus().setFontSize(`${newSize}px`).run();
+            console.log('设置字号为', newSize);
+        };
     }
 
     const sizeDecreaseBtn = document.getElementById('size-decrease-btn');
     if (sizeDecreaseBtn) {
-        sizeDecreaseBtn.onclick = () => setFontSizeDelta(-4);
+        sizeDecreaseBtn.onclick = () => {
+            if (!currentEditor) return;
+            let currentSize = 16;
+            const attrs = currentEditor.getAttributes('textStyle');
+            if (attrs.fontSize) {
+                const match = attrs.fontSize.match(/\d+/);
+                if (match) currentSize = parseInt(match[0]);
+            }
+            let newSize = currentSize - 4;
+            if (newSize < 8) newSize = 8;
+            if (newSize > 150) newSize = 150;
+            currentEditor.chain().focus().setFontSize(`${newSize}px`).run();
+            console.log('设置字号为', newSize);
+        };
     }
 
     const addImageBtn = document.getElementById('add-image-btn');
@@ -463,7 +372,14 @@ function bindRichEditorButtons() {
     if (fontPicker) {
         fontPicker.addEventListener('change', (e) => {
             const family = e.target.value;
-            setFontFamily(family);
+            if (!currentEditor) return;
+            if (family) {
+                currentEditor.chain().focus().setFontFamily(family).run();
+                console.log('设置字体为', family);
+            } else {
+                currentEditor.chain().focus().unsetFontFamily().run();
+                console.log('清除字体');
+            }
         });
     }
 }
@@ -474,17 +390,10 @@ function insertImageToEditor() {
     input.accept = 'image/*';
     input.onchange = (e) => {
         const file = e.target.files[0];
-        if (file && richEditor) {
-            restoreSelection();
+        if (file && currentEditor) {
             const reader = new FileReader();
             reader.onload = (ev) => {
-                const imgUrl = ev.target.result;
-                document.execCommand('insertImage', false, imgUrl);
-                const img = richEditor.querySelector('img:last-of-type');
-                if (img) {
-                    img.style.maxWidth = '100%';
-                    img.style.height = 'auto';
-                }
+                currentEditor.chain().focus().setImage({ src: ev.target.result }).run();
             };
             reader.readAsDataURL(file);
         }
@@ -494,25 +403,15 @@ function insertImageToEditor() {
 
 function openEditDialog(index, currentHtml) {
     currentEditIndex = index;
-    if (richEditor) {
-        richEditor.innerHTML = currentHtml || '';
-        // 清理历史遗留的嵌套样式 span
-        flattenStyleSpans(richEditor);
-        if (editDialog) editDialog.showed = true;
-        setTimeout(() => {
-            richEditor.focus();
-            const range = document.createRange();
-            const sel = window.getSelection();
-            range.selectNodeContents(richEditor);
-            range.collapse(false);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            savedRange = range.cloneRange();
-        }, 50);
-    } else {
-        if (editDialog) editDialog.showed = true;
-    }
+    if (!currentEditor) return;
+    currentEditor.commands.setContent(currentHtml || '');
+    if (editDialog) editDialog.showed = true;
+    setTimeout(() => {
+        currentEditor.commands.focus();
+        currentEditor.commands.selectAll();
+    }, 50);
 }
+
 
 // ==================== 6. 主题应用 ====================
 function ensureSPage() {

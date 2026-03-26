@@ -270,6 +270,11 @@
             transform: translateY(10px);
         }
 
+        p {
+            margin: 0;
+            padding: 0;
+        }
+
         .primary-btn:hover::before {
             opacity: 1;
             transform: translateY(0);
@@ -281,6 +286,23 @@
 
         .grid {
             grid-template-columns: minmax(100px, auto) minmax(100px, auto);
+        }
+
+        #rich-editor {
+            height: 30vh;
+            width: 40vw;
+        }
+        #rich-editor,
+        .ProseMirror {
+            outline: none !important;
+            box-shadow: none !important;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #rich-editor *:focus,
+        .ProseMirror *:focus {
+            outline: none !important;
+            box-shadow: none !important;
         }
 
     </style>
@@ -376,25 +398,10 @@
                         <s-picker-item value="Times New Roman">Times New Roman</s-picker-item>
                     </s-picker>
                 </div>
-
-                <!-- 编辑器本体：脱离 Flex，解决选区蓝条拉满整个屏幕的诡异问题 -->
-                <div id="rich-editor" contenteditable="true" style="
-                    display: block;
-                    width: 100%;
-                    min-height: 200px;
-                    overflow-y: auto;
-                    border: 1px solid var(--s-color-outline, #ccc);
-                    border-radius: 12px;
-                    padding: 16px;
-                    box-sizing: border-box;
-                    background-color: var(--s-color-surface, #fff);
-                    color: var(--s-color-on-surface, #000);
-                    font-size: 38px;
-                    line-height: normal;
-                    outline: none;
-                    word-break: break-word;
-                "></div>
-
+                <s-field>
+                    <div slot="label">请输入内容</div>
+                    <div id="rich-editor" contenteditable="true" ></div>
+                </s-field>
             </div>
             <s-button slot="action" type="text" id="text-edit-cancel">取消</s-button>
             <s-button slot="action" type="text" id="text-edit-confirm">确定</s-button>

@@ -10,10 +10,15 @@
   },
   "dependencies": {
     "@material/material-color-utilities": "^0.2.0",
+    "@tiptap/core": "^3.20.5",
+    "@tiptap/extension-image": "^3.20.5",
+    "@tiptap/extension-text-style": "^3.20.5",
+    "@tiptap/starter-kit": "^3.20.5",
     "html2canvas": "^1.4.1",
     "screenfull": "^6.0.2",
     "sober": "^1.1.9",
-    "sober-theme": "^0.1.2-alpha.1"
+    "sober-theme": "^0.1.2-alpha.1",
+    "tiptap": "^1.32.2"
   },
   "devDependencies": {
     "vite": "^7.3.1",
