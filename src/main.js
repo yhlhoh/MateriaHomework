@@ -222,7 +222,6 @@ function updateTaskContent(index, newHtml) {
 
 // ==================== 5. 富文本编辑器 ====================
 // 自定义文本样式扩展（支持 fontSize 和 fontFamily）
-// 自定义文本样式扩展（支持 fontSize 和 fontFamily）
 const CustomTextStyle = TextStyle.extend({
   name: 'textStyle',
   addAttributes() {
