@@ -1,16 +1,7 @@
 // ==================== 1. 导入依赖 ====================
-import {
-    argbFromHex,
-    hexFromArgb,
-    argbFromRgb,
-    QuantizerCelebi,
-    Score,
-    CorePalette,
-    Hct
-} from '@material/material-color-utilities';
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
-import { Dialog, Ripple } from 'sober';
+import 'sober';
 import { createScheme } from 'sober-theme';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -185,10 +176,17 @@ async function renderUI() {
     await replaceIconMasks(restorePanel);
 }
 
-function resetAll() {
-    //indexedDB.deleteDatabase('KanbanDB');
+function resetPic() {
+   indexedDB.deleteDatabase('KanbanDB'); 
+}
+
+window.resetPic = resetPic;
+
+function resetContent() {
     localStorage.clear();
 }
+
+window.resetContent = resetContent;
 
 function deleteSubject(index, taskItem) {
     taskItem.style.opacity = '0';
@@ -447,8 +445,6 @@ async function applyMaterialYouTheme(source) {
         await createScheme('#9C4F4F', { page: pageElement });
     }
 }
-
-window.resetAll = resetAll;
 
 // ==================== 7. 图片操作 ====================
 let savedCustomImages = [];

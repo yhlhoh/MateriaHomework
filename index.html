@@ -331,17 +331,12 @@
                 <span class="icon-mask" style="--icon-url: url('assets/full.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple>
             </button>
-            <s-dialog>
-            <button id="clear-all-btn" class="primary-btn" data-name="清除内容" slot="trigger">
-                <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
-                <s-ripple attached="true"></s-ripple>
-            </button>
-                <div slot="headline"> 提示 </div>
-                <div slot="text">将会删除所有作业内容，但不会删除背景和图片。是否继续？
-                </div>
-                <s-button slot="action" type="text">取消</s-button>
-                <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetAll(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
-                </s-dialog>
+            <s-popup-menu>
+                <button id="clear-all-btn" class="primary-btn" data-name="清除内容" slot="trigger">                <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple></button>
+                <s-popup-menu-item onclick="resetPic();setTimeout(location.reload.bind(location), 1000);">清除图片</s-popup-menu-item>
+                <s-popup-menu-item onclick="document.getElementById('reset-content-dialog').showed = true;">清除作业</s-popup-menu-item>
+            </s-popup-menu>
             <button id="save-btn" class="primary-btn" data-name="保存图片">
                 <span class="icon-mask" style="--icon-url: url('assets/save.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple>
@@ -406,6 +401,14 @@
             <s-button slot="action" type="text" id="text-edit-cancel">取消</s-button>
             <s-button slot="action" type="text" id="text-edit-confirm">确定</s-button>
         </s-dialog>
+
+            <s-dialog id="reset-content-dialog">
+                <div slot="headline"> 提示 </div>
+                <div slot="text">将会删除所有作业内容。是否继续？
+                </div>
+                <s-button slot="action" type="text">取消</s-button>
+                <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetContent(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
+            </s-dialog>
         <script>
             (async function getVersion() {
                 try {
