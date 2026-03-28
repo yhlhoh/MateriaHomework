@@ -31,7 +31,6 @@
 
         .loading-modal {
             position: fixed;
-            display: block;
             backdrop-filter: blur(20px);
             top: 0px;
             left: 0px;
@@ -41,6 +40,7 @@
             height: 100%;
             width: 100%;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
         }
@@ -312,6 +312,7 @@
     <s-page style="background-color: rgba(255, 0, 0, 0)">
         <div class="loading-modal">
             <h1 style="color: #000000">正在加载</h1>
+            <span id="version-info">123</span>
             <br>
             <s-circular-progress indeterminate="true"></s-circular-progress>
         </div>
@@ -417,8 +418,13 @@
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     const version = await response.text();
+                    if (version.startsWith("<!DOCTYPE")) {
+                        throw new Error('No Version Found')
+                    }
+                    document.getElementById("version-info").innerText = version;
                     console.log(`Version: ${version}`);
                 } catch (err) {
+                    document.getElementById("version-info").innerText = '';
                     console.error('Failed to fetch version file:', err);
                 }
             })();
