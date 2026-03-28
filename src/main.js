@@ -5,8 +5,8 @@ import 'sober';
 import { createScheme } from 'sober-theme';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { TextStyle } from '@tiptap/extension-text-style';   // 命名导入
-import { Image } from '@tiptap/extension-image';    
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Image as TipTapImage } from '@tiptap/extension-image';   // 使用别名避免冲突
 
 // ==================== 2. IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -109,7 +109,7 @@ function initData() {
         try {
             const parsed = JSON.parse(saved);
             appState = defaultSubjects.map(def => {
-                const found = parsed.find(p => p.name === def.name);
+                const found = parsed.find(p => p.id === def.id);
                 if (found) {
                     return { ...def, content: found.content || '', isDeleted: found.isDeleted || false };
                 }
@@ -131,7 +131,7 @@ async function renderUI() {
     taskList.innerHTML = '';
     restorePanel.innerHTML = '';
 
-    appState.forEach((subject, index) => {
+    appState.forEach((subject) => {
         if (!subject.isDeleted) {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'task-item';
@@ -140,22 +140,23 @@ async function renderUI() {
                     <span class="icon-mask" style="--icon-url: url('${subject.icon}')" aria-hidden="true"></span>
                     <span>${subject.name}</span>
                 </div>
-                <div class="task-content" data-index="${index}">${subject.content}</div>
+                <div class="task-content" data-id="${subject.id}">${subject.content}</div>
                 <s-ripple attached="true"></s-ripple>
                 <button class="delete-btn" title="隐藏科目">×</button>
             `;
 
             const contentDiv = itemDiv.querySelector('.task-content');
             contentDiv.removeAttribute('contenteditable');
+            const taskId = subject.id;
             contentDiv.addEventListener('click', (e) => {
                 e.stopPropagation();
-                openEditDialog(index, contentDiv.innerHTML);
+                openEditDialog(taskId, contentDiv.innerHTML);
             });
 
             const delBtn = itemDiv.querySelector('.delete-btn');
             delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                deleteSubject(index, itemDiv);
+                deleteSubject(taskId, itemDiv);
             });
 
             taskList.appendChild(itemDiv);
@@ -166,7 +167,7 @@ async function renderUI() {
             btn.innerHTML = `<span class="icon-mask" style="--icon-url: url('${subject.icon}')" aria-hidden="true"></span><s-ripple attached="true"></s-ripple>`;
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                restoreSubject(index);
+                restoreSubject(subject.id);
             });
             restorePanel.appendChild(btn);
         }
@@ -177,7 +178,7 @@ async function renderUI() {
 }
 
 function resetPic() {
-   indexedDB.deleteDatabase('KanbanDB'); 
+    indexedDB.deleteDatabase('KanbanDB');
 }
 
 window.resetPic = resetPic;
@@ -188,7 +189,9 @@ function resetContent() {
 
 window.resetContent = resetContent;
 
-function deleteSubject(index, taskItem) {
+function deleteSubject(id, taskItem) {
+    const index = appState.findIndex(s => s.id === id);
+    if (index === -1) return;
     taskItem.style.opacity = '0';
     taskItem.style.transform = 'scale(0.9)';
     setTimeout(() => {
@@ -198,7 +201,9 @@ function deleteSubject(index, taskItem) {
     }, 220);
 }
 
-function restoreSubject(index) {
+function restoreSubject(id) {
+    const index = appState.findIndex(s => s.id === id);
+    if (index === -1) return;
     appState[index].isDeleted = false;
     saveState();
     renderUI();
@@ -208,18 +213,21 @@ function saveState() {
     localStorage.setItem('kanban_data', JSON.stringify(appState));
 }
 
-function updateTaskContent(index, newHtml) {
-    const taskContent = document.querySelector(`.task-content[data-index="${index}"]`);
+// 根据 ID 更新任务内容
+function updateTaskContentById(taskId, newHtml) {
+    const taskContent = document.querySelector(`.task-content[data-id="${taskId}"]`);
     if (taskContent) {
         taskContent.innerHTML = newHtml;
     }
-    appState[index].content = newHtml;
-    saveState();
-    if (window.recomputeScale) window.recomputeScale();
+    const subject = appState.find(s => s.id === taskId);
+    if (subject) {
+        subject.content = newHtml;
+        saveState();
+        if (window.recomputeScale) window.recomputeScale();
+    }
 }
 
 // ==================== 5. 富文本编辑器 ====================
-// 自定义文本样式扩展（支持 fontSize 和 fontFamily）
 const CustomTextStyle = TextStyle.extend({
   name: 'textStyle',
   addAttributes() {
@@ -272,9 +280,15 @@ const CustomTextStyle = TextStyle.extend({
 
 let editDialog = null;
 let currentEditor = null;
-let currentEditIndex = null;
+let currentEditTaskId = null;   // 改用任务 ID
 
 function initRichEditorDialog() {
+    // 避免重复初始化
+    if (currentEditor) {
+        currentEditor.destroy();
+        currentEditor = null;
+    }
+
     editDialog = document.getElementById('text-edit-panel');
     const editorElement = document.getElementById('rich-editor');
 
@@ -282,29 +296,24 @@ function initRichEditorDialog() {
 
     editorElement.style.lineHeight = '1.2';
 
-    // 添加样式消除段落边距
-    const style = document.createElement('style');
-    style.textContent = '#rich-editor p { margin: 0; }';
-    document.head.appendChild(style);
-
     currentEditor = new Editor({
         element: editorElement,
         extensions: [
             StarterKit.configure({
                 textStyle: false,
-                dropcursor: false, // 禁用拖拽光标扩展，避免错误
+                dropcursor: false,
             }),
             CustomTextStyle,
-            Image.configure({
+            TipTapImage.configure({   // 使用别名
                 inline: true,
                 allowBase64: true,
             }),
         ],
         content: '',
         onUpdate: ({ editor }) => {
-            if (currentEditIndex !== null) {
+            if (currentEditTaskId !== null) {
                 const html = editor.getHTML();
-                updateTaskContent(currentEditIndex, html);
+                updateTaskContentById(currentEditTaskId, html);
             }
         },
     });
@@ -314,8 +323,14 @@ function initRichEditorDialog() {
     const confirmBtn = document.getElementById('text-edit-confirm');
     const cancelBtn = document.getElementById('text-edit-cancel');
 
-    if (confirmBtn) confirmBtn.onclick = () => (editDialog.showed = false);
-    if (cancelBtn) cancelBtn.onclick = () => (editDialog.showed = false);
+    if (confirmBtn) confirmBtn.onclick = () => {
+        editDialog.showed = false;
+        currentEditTaskId = null;   // 关闭时重置
+    };
+    if (cancelBtn) cancelBtn.onclick = () => {
+        editDialog.showed = false;
+        currentEditTaskId = null;   // 关闭时重置
+    };
 }
 
 function bindRichEditorButtons() {
@@ -398,8 +413,13 @@ function insertImageToEditor() {
     input.click();
 }
 
-function openEditDialog(index, currentHtml) {
-    currentEditIndex = index;
+function openEditDialog(taskId, currentHtml) {
+    // 如果对话框已打开，先关闭并重置
+    if (editDialog && editDialog.showed) {
+        editDialog.showed = false;
+        currentEditTaskId = null;
+    }
+    currentEditTaskId = taskId;
     if (!currentEditor) return;
     currentEditor.commands.setContent(currentHtml || '');
     if (editDialog) editDialog.showed = true;
@@ -408,7 +428,6 @@ function openEditDialog(index, currentHtml) {
         currentEditor.commands.selectAll();
     }, 50);
 }
-
 
 // ==================== 6. 主题应用 ====================
 function ensureSPage() {
@@ -428,7 +447,7 @@ async function applyMaterialYouTheme(source) {
         } else if (source instanceof HTMLImageElement) {
             await createScheme(source, { page: pageElement });
         } else if (source instanceof File) {
-            const img = new window.Image();
+            const img = new window.Image();   // 使用全局 Image
             const url = URL.createObjectURL(source);
             img.src = url;
             await new Promise((resolve, reject) => {
