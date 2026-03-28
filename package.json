@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "echo $(git log -1 --format=\"%h %s\" > public/version.txt) > public/version.txt",
+    "prebuild": "git log -1 --format=\"%h %s\" > public/version.txt",
     "build": "vite build",
     "preview": "vite preview"
   },
