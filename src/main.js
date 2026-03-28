@@ -428,7 +428,7 @@ async function applyMaterialYouTheme(source) {
         } else if (source instanceof HTMLImageElement) {
             await createScheme(source, { page: pageElement });
         } else if (source instanceof File) {
-            const img = new Image();
+            const img = new window.Image();
             const url = URL.createObjectURL(source);
             img.src = url;
             await new Promise((resolve, reject) => {
