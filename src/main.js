@@ -1,3 +1,7 @@
+// 0个人喜欢用1 2 3 4 5 6 7分模块……
+// 但是现在不太有动力（虽然这是必须的）扁平化重构……
+// 会改的……吧
+
 // ==================== 1. 导入依赖 ====================
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
@@ -228,6 +232,8 @@ function updateTaskContentById(taskId, newHtml) {
 }
 
 // ==================== 5. 富文本编辑器 ====================
+
+// 自定义文本样式扩展
 const CustomTextStyle = TextStyle.extend({
   name: 'textStyle',
   addAttributes() {
@@ -246,6 +252,14 @@ const CustomTextStyle = TextStyle.extend({
         renderHTML: attributes => {
           if (!attributes.fontFamily) return {};
           return { style: `font-family: ${attributes.fontFamily}` };
+        },
+      },
+      color: {
+        default: null,
+        parseHTML: element => element.style.color,
+        renderHTML: attributes => {
+          if (!attributes.color) return {};
+          return { style: `color: ${attributes.color}` };
         },
       },
     };
@@ -274,159 +288,310 @@ const CustomTextStyle = TextStyle.extend({
           .removeEmptyTextStyle()
           .run();
       },
+      setColor: color => ({ chain }) => {
+        return chain()
+          .setMark('textStyle', { color })
+          .run();
+      },
+      unsetColor: () => ({ chain }) => {
+        return chain()
+          .setMark('textStyle', { color: null })
+          .removeEmptyTextStyle()
+          .run();
+      },
     };
   },
 });
 
+// 辅助函数：从原生 Selection 获取 TipTap 文档位置
+function getCurrentTipTapSelection() {
+  if (!currentEditor) return null;
+  const { view } = currentEditor;
+  const nativeSel = window.getSelection();
+  if (!nativeSel || nativeSel.rangeCount === 0) return null;
+  const range = nativeSel.getRangeAt(0);
+  if (!view.dom.contains(range.commonAncestorContainer)) return null;
+  const from = view.posAtDOM(range.startContainer, range.startOffset);
+  const to = view.posAtDOM(range.endContainer, range.endOffset);
+  if (from === undefined || to === undefined) return null;
+  return { from, to };
+}
+
+function getSelectedFontSize() {
+  const sel = getCurrentTipTapSelection();
+  if (!sel || sel.from === sel.to) return null;
+  const { state, view } = currentEditor;
+  
+  // 1. 优先从 marks 获取
+  let fontSize = null;
+  state.doc.nodesBetween(sel.from, sel.to, (node) => {
+    if (node.marks) {
+      node.marks.forEach(mark => {
+        if (mark.type.name === 'textStyle' && mark.attrs.fontSize) {
+          fontSize = mark.attrs.fontSize;
+        }
+      });
+    }
+  });
+  if (fontSize) {
+    const match = fontSize.match(/\d+/);
+    if (match) return parseInt(match[0]);
+  }
+  
+  // 2. 从 DOM 计算样式（安全包裹）
+  try {
+    const fromNode = view.domAtPos(sel.from);
+    const toNode = view.domAtPos(sel.to);
+    const range = document.createRange();
+    range.setStart(fromNode.node, fromNode.offset);
+    range.setEnd(toNode.node, toNode.offset);
+    const clonedContents = range.cloneContents();
+    
+    // 创建一个块级容器，确保有元素节点
+    const container = document.createElement('div');
+    container.appendChild(clonedContents);
+    
+    // 如果容器内没有任何子元素（比如只有文本），则文本节点直接作为容器的 innerText
+    // 但我们需要一个元素来计算样式，所以主动包裹一个 span
+    let elementForStyle = container.firstElementChild;
+    if (!elementForStyle) {
+      // 只有文本节点或空，创建一个 span 包裹所有内容
+      const span = document.createElement('span');
+      while (container.firstChild) {
+        span.appendChild(container.firstChild);
+      }
+      container.appendChild(span);
+      elementForStyle = span;
+    }
+    
+    const computed = window.getComputedStyle(elementForStyle);
+    const domSize = computed.fontSize;
+    if (domSize) {
+      const match = domSize.match(/\d+/);
+      if (match) return parseInt(match[0]);
+    }
+  } catch (e) {
+    console.warn('getSelectedFontSize DOM fallback failed', e);
+  }
+  
+  return 38; // 默认字号
+}
+
+// 编辑器实例
 let editDialog = null;
 let currentEditor = null;
-let currentEditTaskId = null;   // 改用任务 ID
+let currentEditId = null;  
+
+// 粘贴时保留颜色等样式
+function handlePaste(event) {
+  event.preventDefault();
+  const html = event.clipboardData.getData('text/html');
+  const text = event.clipboardData.getData('text/plain');
+  if (html) {
+    // 解析 HTML，保留内联样式
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    // 遍历所有元素，提取 color、background-color、font-size 等
+    const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+    let node;
+    while (node = walker.nextNode()) {
+      const style = node.style;
+      const color = style.color;
+      const bgColor = style.backgroundColor;
+      const fontSize = style.fontSize;
+      let inlineStyle = '';
+      if (color) inlineStyle += `color: ${color};`;
+      if (bgColor) inlineStyle += `background-color: ${bgColor};`;
+      if (fontSize) inlineStyle += `font-size: ${fontSize};`;
+      if (inlineStyle) node.setAttribute('style', inlineStyle);
+    }
+    const cleanedHtml = doc.body.innerHTML;
+    currentEditor.commands.insertContent(cleanedHtml);
+  } else if (text) {
+    currentEditor.commands.insertContent(text);
+  }
+}
 
 function initRichEditorDialog() {
-    // 避免重复初始化
-    if (currentEditor) {
-        currentEditor.destroy();
-        currentEditor = null;
+  editDialog = document.getElementById('text-edit-panel');
+  const editorElement = document.getElementById('rich-editor');
+
+  if (!editDialog || !editorElement) return;
+
+  editorElement.style.lineHeight = '1.2';
+
+  // 添加样式消除段落边距
+  const style = document.createElement('style');
+  style.textContent = '#rich-editor p { margin: 0; }';
+  document.head.appendChild(style);
+
+  currentEditor = new Editor({
+    element: editorElement,
+    extensions: [
+      StarterKit.configure({
+        textStyle: false,
+        dropcursor: false,
+      }),
+      CustomTextStyle,
+      TipTapImage.configure({
+        inline: true,
+        allowBase64: true,
+      }),
+    ],
+    content: '',
+    onUpdate: ({ editor }) => {
+    if (currentEditId) {
+        const index = appState.findIndex(item => item.id === currentEditId);
+        if (index !== -1) {
+        appState[index].content = editor.getHTML();
+        saveState();
+        }
     }
+    }
+  });
 
-    editDialog = document.getElementById('text-edit-panel');
-    const editorElement = document.getElementById('rich-editor');
+  // 自定义粘贴处理（保留颜色样式）
+  editorElement.addEventListener('paste', handlePaste);
 
-    if (!editDialog || !editorElement) return;
+  bindRichEditorButtons();
 
-    editorElement.style.lineHeight = '1.2';
+  const confirmBtn = document.getElementById('text-edit-confirm');
+  const cancelBtn = document.getElementById('text-edit-cancel');
 
-    currentEditor = new Editor({
-        element: editorElement,
-        extensions: [
-            StarterKit.configure({
-                textStyle: false,
-                dropcursor: false,
-            }),
-            CustomTextStyle,
-            TipTapImage.configure({   // 使用别名
-                inline: true,
-                allowBase64: true,
-            }),
-        ],
-        content: '',
-        onUpdate: ({ editor }) => {
-            if (currentEditTaskId !== null) {
-                const html = editor.getHTML();
-                updateTaskContentById(currentEditTaskId, html);
-            }
-        },
-    });
-
-    bindRichEditorButtons();
-
-    const confirmBtn = document.getElementById('text-edit-confirm');
-    const cancelBtn = document.getElementById('text-edit-cancel');
-
-    if (confirmBtn) confirmBtn.onclick = () => {
-        editDialog.showed = false;
-        currentEditTaskId = null;   // 关闭时重置
-    };
-    if (cancelBtn) cancelBtn.onclick = () => {
-        editDialog.showed = false;
-        currentEditTaskId = null;   // 关闭时重置
-    };
+  if (confirmBtn) confirmBtn.onclick = () => {
+    editDialog.showed = false;
+    // 关闭时刷新任务列表显示
+    renderUI();
+  };
+  if (cancelBtn) cancelBtn.onclick = () => {
+    // 取消时恢复原有内容
+    if (currentEditId !== null) {
+      const originalHtml = appState[currentEditId].content;
+      currentEditor.commands.setContent(originalHtml);
+    }
+    editDialog.showed = false;
+    renderUI();
+  };
 }
 
 function bindRichEditorButtons() {
-    const boldBtn = document.getElementById('bold-btn');
-    if (boldBtn) {
-        boldBtn.onclick = () => currentEditor?.chain().focus().toggleBold().run();
-    }
+  // 加粗
+  const boldBtn = document.getElementById('bold-btn');
+  if (boldBtn) {
+    boldBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (!currentEditor) return;
+      const selection = getCurrentTipTapSelection();
+      if (!selection || selection.from === selection.to) return;
+      const { from, to } = selection;
+      currentEditor.chain().focus().toggleBold().run();
+      currentEditor.commands.setTextSelection({ from, to });
+    });
+  }
 
-    const sizeIncreaseBtn = document.getElementById('size-increase-btn');
-    if (sizeIncreaseBtn) {
-        sizeIncreaseBtn.onclick = () => {
-            if (!currentEditor) return;
-            let currentSize = 16;
-            const attrs = currentEditor.getAttributes('textStyle');
-            if (attrs.fontSize) {
-                const match = attrs.fontSize.match(/\d+/);
-                if (match) currentSize = parseInt(match[0]);
-            }
-            let newSize = currentSize + 4;
-            if (newSize < 8) newSize = 8;
-            if (newSize > 150) newSize = 150;
-            currentEditor.chain().focus().setFontSize(`${newSize}px`).run();
-            console.log('设置字号为', newSize);
-        };
-    }
+  // 增大字号（基于选中文本的实际字号）
+  const sizeIncreaseBtn = document.getElementById('size-increase-btn');
+  if (sizeIncreaseBtn) {
+    sizeIncreaseBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (!currentEditor) return;
+      const selection = getCurrentTipTapSelection();
+      if (!selection || selection.from === selection.to) return;
+      const { from, to } = selection;
+      let currentSize = getSelectedFontSize();
+      if (!currentSize) currentSize = 16;
+      let newSize = Math.min(150, Math.max(8, currentSize + 4));
+      currentEditor.chain().focus().setFontSize(`${newSize}px`).run();
+      currentEditor.commands.setTextSelection({ from, to });
+    });
+  }
 
-    const sizeDecreaseBtn = document.getElementById('size-decrease-btn');
-    if (sizeDecreaseBtn) {
-        sizeDecreaseBtn.onclick = () => {
-            if (!currentEditor) return;
-            let currentSize = 16;
-            const attrs = currentEditor.getAttributes('textStyle');
-            if (attrs.fontSize) {
-                const match = attrs.fontSize.match(/\d+/);
-                if (match) currentSize = parseInt(match[0]);
-            }
-            let newSize = currentSize - 4;
-            if (newSize < 8) newSize = 8;
-            if (newSize > 150) newSize = 150;
-            currentEditor.chain().focus().setFontSize(`${newSize}px`).run();
-            console.log('设置字号为', newSize);
-        };
-    }
+  // 减小字号
+  const sizeDecreaseBtn = document.getElementById('size-decrease-btn');
+  if (sizeDecreaseBtn) {
+    sizeDecreaseBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (!currentEditor) return;
+      const selection = getCurrentTipTapSelection();
+      if (!selection || selection.from === selection.to) return;
+      const { from, to } = selection;
+      let currentSize = getSelectedFontSize();
+      if (!currentSize) currentSize = 16;
+      let newSize = Math.min(150, Math.max(8, currentSize - 4));
+      currentEditor.chain().focus().setFontSize(`${newSize}px`).run();
+      currentEditor.commands.setTextSelection({ from, to });
+    });
+  }
 
-    const addImageBtn = document.getElementById('add-image-btn');
-    if (addImageBtn) {
-        addImageBtn.onclick = () => insertImageToEditor();
-    }
+  // 插入图片
+  const addImageBtn = document.getElementById('add-image-btn');
+  if (addImageBtn) {
+    addImageBtn.onclick = () => insertImageToEditor();
+  }
 
-    const fontPicker = document.getElementById('font-picker');
-    if (fontPicker) {
-        fontPicker.addEventListener('change', (e) => {
-            const family = e.target.value;
-            if (!currentEditor) return;
-            if (family) {
-                currentEditor.chain().focus().setFontFamily(family).run();
-                console.log('设置字体为', family);
-            } else {
-                currentEditor.chain().focus().unsetFontFamily().run();
-                console.log('清除字体');
-            }
-        });
-    }
+  // 字体选择（支持部分文本单独设置）
+  const fontPicker = document.getElementById('font-picker');
+  if (fontPicker) {
+    fontPicker.addEventListener('mousedown', (e) => {
+      // 阻止焦点转移，保存当前选区
+      e.preventDefault();
+      if (!currentEditor) return;
+      const savedSelection = getCurrentTipTapSelection();
+      if (!savedSelection || savedSelection.from === savedSelection.to) return;
+      // 临时存储，待 change 时使用
+      fontPicker._savedSelection = savedSelection;
+    });
+    fontPicker.addEventListener('change', (e) => {
+      if (!currentEditor) return;
+      let { from, to } = currentEditor.state.selection;
+      if (from === to && fontPicker._savedSelection) {
+        from = fontPicker._savedSelection.from;
+        to = fontPicker._savedSelection.to;
+      }
+      if (from === to) return;
+      const family = e.target.value;
+      if (family) {
+        currentEditor.chain().focus().setFontFamily(family).run();
+      } else {
+        currentEditor.chain().focus().unsetFontFamily().run();
+      }
+      currentEditor.commands.setTextSelection({ from, to });
+      delete fontPicker._savedSelection;
+    });
+  }
 }
 
 function insertImageToEditor() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file && currentEditor) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                currentEditor.chain().focus().setImage({ src: ev.target.result }).run();
-            };
-            reader.readAsDataURL(file);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (file && currentEditor) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        // 保存当前选区，插入图片后恢复光标位置
+        const selection = getCurrentTipTapSelection();
+        currentEditor.chain().focus().setImage({ src: ev.target.result }).run();
+        if (selection && selection.from !== selection.to) {
+          currentEditor.commands.setTextSelection(selection);
         }
-    };
-    input.click();
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  input.click();
 }
 
-function openEditDialog(taskId, currentHtml) {
-    // 如果对话框已打开，先关闭并重置
-    if (editDialog && editDialog.showed) {
-        editDialog.showed = false;
-        currentEditTaskId = null;
-    }
-    currentEditTaskId = taskId;
-    if (!currentEditor) return;
-    currentEditor.commands.setContent(currentHtml || '');
-    if (editDialog) editDialog.showed = true;
-    setTimeout(() => {
-        currentEditor.commands.focus();
-        currentEditor.commands.selectAll();
-    }, 50);
+function openEditDialog(id, currentHtml) {
+  currentEditId = id;
+  if (!currentEditor) return;
+  currentEditor.commands.setContent(currentHtml || '');
+  if (editDialog) editDialog.showed = true;
+  setTimeout(() => {
+    currentEditor.commands.focus();
+    currentEditor.commands.selectAll();
+  }, 50);
 }
 
 // ==================== 6. 主题应用 ====================
