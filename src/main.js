@@ -594,7 +594,26 @@ function openEditDialog(id, currentHtml) {
   }, 50);
 }
 
-// ==================== 6. 主题应用 ====================
+// ==================== 6. 主题应用 + 主色缓存 ====================
+const PRIMARY_COLOR_CACHE_KEY = 'cached_primary_color';
+
+function getCachedPrimaryColor() {
+    return localStorage.getItem(PRIMARY_COLOR_CACHE_KEY);
+}
+
+function setCachedPrimaryColor(hex) {
+    if (hex && hex.startsWith('#')) {
+        localStorage.setItem(PRIMARY_COLOR_CACHE_KEY, hex);
+    }
+}
+
+function getPrimaryColorFromPage() {
+    const page = document.querySelector('s-page');
+    if (!page) return null;
+    const color = getComputedStyle(page).getPropertyValue('--s-color-primary').trim();
+    return color || null;
+}
+
 function ensureSPage() {
     let sPage = document.querySelector('s-page');
     if (!sPage) {
@@ -612,7 +631,7 @@ async function applyMaterialYouTheme(source) {
         } else if (source instanceof HTMLImageElement) {
             await createScheme(source, { page: pageElement });
         } else if (source instanceof File) {
-            const img = new window.Image();   // 使用全局 Image
+            const img = new window.Image();
             const url = URL.createObjectURL(source);
             img.src = url;
             await new Promise((resolve, reject) => {
@@ -624,9 +643,16 @@ async function applyMaterialYouTheme(source) {
         } else {
             throw new Error('不支持的 source 类型');
         }
+        // 主题生成后，获取实际主色并缓存
+        const primaryColor = getPrimaryColorFromPage();
+        if (primaryColor) {
+            setCachedPrimaryColor(primaryColor);
+        }
     } catch (error) {
         console.error('主题生成失败，使用默认颜色', error);
         await createScheme('#9C4F4F', { page: pageElement });
+        const defaultColor = getPrimaryColorFromPage();
+        if (defaultColor) setCachedPrimaryColor(defaultColor);
     }
 }
 
@@ -648,14 +674,29 @@ function applyBackgroundImage(url, revokePrevious = false) {
 }
 
 async function loadImages() {
+    // 1. 加载背景图片文件（如果有）
     const bgFile = await getDB('background_img');
+    
+    // 2. 处理主题生成（优先使用缓存主色）
+    const cachedColor = getCachedPrimaryColor();
+    if (cachedColor) {
+        // 有缓存主色，直接使用（避免重复取色）
+        await applyMaterialYouTheme(cachedColor);
+    } else if (bgFile) {
+        // 无缓存但有背景图片，从图片取色并自动缓存
+        await applyMaterialYouTheme(bgFile);
+    } else {
+        // 无缓存无图片，使用默认颜色并缓存
+        await applyMaterialYouTheme('#9C4F4F');
+    }
+    
+    // 3. 应用背景图片（必须在主题之后，避免覆盖样式）
     if (bgFile) {
         const url = URL.createObjectURL(bgFile);
         applyBackgroundImage(url);
-        await applyMaterialYouTheme(bgFile);
-    } else {
-        await applyMaterialYouTheme('#9C4F4F');
     }
+    
+    // 4. 加载自定义图片库
     savedCustomImages = (await getDB('custom_images')) || [];
     savedCustomImages.forEach(imgData => createCustomImgElement(imgData.id, imgData.file));
 }
@@ -668,6 +709,7 @@ document.getElementById('bg-change-btn').addEventListener('click', () => {
             const url = URL.createObjectURL(file);
             applyBackgroundImage(url, true);
             await setDB('background_img', file);
+            // 重新从图片提取主色并自动缓存
             await applyMaterialYouTheme(file);
         }
         input.value = '';
@@ -815,6 +857,18 @@ if ('serviceWorker' in navigator) {
 // ==================== 12. 初始化 ====================
 setInterval(updateClock, 1000);
 updateClock();
+
+// 重置功能中清除主色缓存
+window.resetContent = function() {
+    localStorage.clear();   // 清除所有 localStorage（包括缓存的主色）
+    location.reload();
+};
+
+window.resetPic = function() {
+    indexedDB.deleteDatabase('KanbanDB');
+    localStorage.removeItem(PRIMARY_COLOR_CACHE_KEY);  // 同时清除主色缓存
+    location.reload();
+};
 
 (async () => {
     initRichEditorDialog();
