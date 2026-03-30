@@ -418,6 +418,23 @@ function initRichEditorDialog() {
 
   if (!editDialog || !editorElement) return;
 
+  editorElement.addEventListener('beforeinput', (e) => {
+        // 只处理删除操作
+        if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+            const proseMirror = editorElement.querySelector('.ProseMirror');
+            if (proseMirror) {
+                // 检查是否为空内容（只有占位符 <p><br class="ProseMirror-trailingBreak"></p>）
+                const isEmpty = proseMirror.innerText.trim() === '' &&
+                                proseMirror.children.length === 1 &&
+                                proseMirror.children[0].tagName === 'P' &&
+                                proseMirror.children[0].innerHTML.includes('ProseMirror-trailingBreak');
+                if (isEmpty) {
+                    e.preventDefault(); // 阻止删除
+                    return false;
+                }
+            }
+        }
+    });
   editorElement.style.lineHeight = '1.2';
 
   // 添加样式消除段落边距
