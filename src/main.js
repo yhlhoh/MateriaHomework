@@ -188,7 +188,7 @@ function resetPic() {
 window.resetPic = resetPic;
 
 function resetContent() {
-    localStorage.clear('knban_data');
+  localStorage.removeItem('kanban_data');
 }
 
 window.resetContent = resetContent;
@@ -772,12 +772,12 @@ function openEditDialog(id, currentHtml) {
 const PRIMARY_COLOR_CACHE_KEY = 'cached_primary_color';
 
 function getCachedPrimaryColor() {
-    return localStorage.getItem(PRIMARY_COLOR_CACHE_KEY);
+  return localStorage.getItem(PRIMARY_COLOR_CACHE_KEY);
 }
 
 function setCachedPrimaryColor(hex) {
     if (hex && hex.startsWith('#')) {
-        localStorage.setItem(PRIMARY_COLOR_CACHE_KEY, hex);
+    localStorage.setItem(PRIMARY_COLOR_CACHE_KEY, hex);
     }
 }
 
@@ -1032,9 +1032,8 @@ if ('serviceWorker' in navigator) {
 setInterval(updateClock, 1000);
 updateClock();
 
-// 重置功能中清除主色缓存
 window.resetContent = function() {
-    localStorage.clear();   // 清除所有 localStorage（包括缓存的主色）
+  localStorage.removeItem('kanban_data');
     location.reload();
 };
 
