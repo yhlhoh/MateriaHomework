@@ -96,15 +96,15 @@ async function replaceIconMasks(container = document) {
 // ==================== 4. 全局状态与看板逻辑 ====================
 let appState = [];
 const defaultSubjects = [
-    { id: 's1', name: '语文', icon: 'assets/chinese.svg', content: '', isDeleted: false },
-    { id: 's2', name: '数学', icon: 'assets/mathematics.svg', content: '', isDeleted: false },
-    { id: 's3', name: '英语', icon: 'assets/english.svg', content: '', isDeleted: false },
-    { id: 's4', name: '物理', icon: 'assets/physics.svg', content: '', isDeleted: false },
-    { id: 's5', name: '化学', icon: 'assets/chemistry.svg', content: '', isDeleted: false },
-    { id: 's6', name: '生物', icon: 'assets/biology.svg', content: '', isDeleted: false },
-    { id: 's7', name: '历史', icon: 'assets/history.svg', content: '', isDeleted: false },
-    { id: 's8', name: '政治', icon: 'assets/politics.svg', content: '', isDeleted: false },
-    { id: 's9', name: '地理', icon: 'assets/geography.svg', content: '', isDeleted: false }
+    { id: 's1', name: '语文', icon: 'assets/chinese.svg', content: ' ', isDeleted: false },
+    { id: 's2', name: '数学', icon: 'assets/mathematics.svg', content: ' ', isDeleted: false },
+    { id: 's3', name: '英语', icon: 'assets/english.svg', content: ' ', isDeleted: false },
+    { id: 's4', name: '物理', icon: 'assets/physics.svg', content: ' ', isDeleted: false },
+    { id: 's5', name: '化学', icon: 'assets/chemistry.svg', content: ' ', isDeleted: false },
+    { id: 's6', name: '生物', icon: 'assets/biology.svg', content: ' ', isDeleted: false },
+    { id: 's7', name: '历史', icon: 'assets/history.svg', content: ' ', isDeleted: false },
+    { id: 's8', name: '政治', icon: 'assets/politics.svg', content: ' ', isDeleted: false },
+    { id: 's9', name: '地理', icon: 'assets/geography.svg', content: ' ', isDeleted: false }
 ];
 
 function initData() {
@@ -188,7 +188,7 @@ function resetPic() {
 window.resetPic = resetPic;
 
 function resetContent() {
-    localStorage.clear();
+    localStorage.clear('knban_data');
 }
 
 window.resetContent = resetContent;
@@ -381,6 +381,124 @@ function getSelectedFontSize() {
 let editDialog = null;
 let currentEditor = null;
 let currentEditId = null;  
+let imeStartedInEmptyBlock = false;
+const IME_DEBUG = true;
+const imeDebugLogs = [];
+let imeGlobalDebugAttached = false;
+
+function pushImeDebugLog(entry) {
+  if (!IME_DEBUG) return;
+  imeDebugLogs.push(entry);
+  if (imeDebugLogs.length > 500) {
+    imeDebugLogs.shift();
+  }
+}
+
+window.__getImeDebugLogs = () => imeDebugLogs.slice();
+window.__clearImeDebugLogs = () => {
+  imeDebugLogs.length = 0;
+};
+
+function getImeDebugSnapshot(view) {
+  const { state } = view;
+  const { from, to, empty, $from } = state.selection;
+  const blockStart = from - $from.parentOffset;
+  const textBeforeCursor = state.doc.textBetween(blockStart, from, '\n', '\0');
+  return {
+    from,
+    to,
+    empty,
+    parentOffset: $from.parentOffset,
+    parentText: $from.parent.textContent,
+    textBeforeCursor,
+  };
+}
+
+function logIme(view, phase, extra = {}) {
+  if (!IME_DEBUG) return;
+  try {
+    const payload = {
+      ts: Date.now(),
+      phase,
+      ...getImeDebugSnapshot(view),
+      ...extra,
+    };
+    pushImeDebugLog(payload);
+    console.log('[IME-DEBUG]', payload);
+  } catch (err) {
+    const payload = { ts: Date.now(), phase, error: String(err), ...extra };
+    pushImeDebugLog(payload);
+    console.log('[IME-DEBUG]', payload);
+  }
+}
+
+function attachImeDebugListeners(view) {
+  if (!IME_DEBUG) return;
+  const dom = view.dom;
+  if (!dom || dom.__imeDebugAttached) return;
+  dom.__imeDebugAttached = true;
+
+  const events = [
+    'compositionstart',
+    'compositionupdate',
+    'compositionend',
+    'beforeinput',
+    'input',
+    'keydown',
+    'keyup',
+  ];
+
+  events.forEach((type) => {
+    dom.addEventListener(type, (e) => {
+      logIme(view, `dom:${type}`, {
+        data: typeof e.data === 'string' ? e.data : null,
+        inputType: e.inputType || null,
+        isComposing: !!e.isComposing,
+        key: e.key || null,
+        code: e.code || null,
+      });
+    }, true);
+  });
+}
+
+function attachGlobalImeDebugListeners() {
+  if (!IME_DEBUG || imeGlobalDebugAttached) return;
+  imeGlobalDebugAttached = true;
+
+  const events = [
+    'compositionstart',
+    'compositionupdate',
+    'compositionend',
+    'beforeinput',
+    'input',
+    'keydown',
+    'keyup',
+  ];
+
+  events.forEach((type) => {
+    document.addEventListener(type, (e) => {
+      const editorView = currentEditor?.view;
+      const target = e.target;
+      const inEditor = !!editorView && !!target && editorView.dom.contains(target);
+      const snapshot = editorView ? getImeDebugSnapshot(editorView) : null;
+      const payload = {
+        ts: Date.now(),
+        phase: `doc:${type}`,
+        data: typeof e.data === 'string' ? e.data : null,
+        inputType: e.inputType || null,
+        isComposing: !!e.isComposing,
+        key: e.key || null,
+        code: e.code || null,
+        activeTag: document.activeElement ? document.activeElement.tagName : null,
+        targetTag: target && target.tagName ? target.tagName : null,
+        inEditor,
+        snapshot,
+      };
+      pushImeDebugLog(payload);
+      console.log('[IME-DEBUG]', payload);
+    }, true);
+  });
+}
 
 // 粘贴时保留颜色等样式
 function handlePaste(event) {
@@ -418,23 +536,8 @@ function initRichEditorDialog() {
 
   if (!editDialog || !editorElement) return;
 
-  editorElement.addEventListener('beforeinput', (e) => {
-        // 只处理删除操作
-        if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
-            const proseMirror = editorElement.querySelector('.ProseMirror');
-            if (proseMirror) {
-                // 检查是否为空内容（只有占位符 <p><br class="ProseMirror-trailingBreak"></p>）
-                const isEmpty = proseMirror.innerText.trim() === '' &&
-                                proseMirror.children.length === 1 &&
-                                proseMirror.children[0].tagName === 'P' &&
-                                proseMirror.children[0].innerHTML.includes('ProseMirror-trailingBreak');
-                if (isEmpty) {
-                    e.preventDefault(); // 阻止删除
-                    return false;
-                }
-            }
-        }
-    });
+  attachGlobalImeDebugListeners();
+
   editorElement.style.lineHeight = '1.2';
 
   // 添加样式消除段落边距
@@ -444,6 +547,57 @@ function initRichEditorDialog() {
 
   currentEditor = new Editor({
     element: editorElement,
+    editorProps: {
+        handleDOMEvents: {
+        compositionstart(view) {
+          attachImeDebugListeners(view);
+          const { state } = view;
+          const { $from } = state.selection;
+          imeStartedInEmptyBlock = $from.parentOffset === 0 && $from.parent.textContent.length === 0;
+          logIme(view, 'handler:compositionstart', {
+            imeStartedInEmptyBlock,
+          });
+          return false;
+        },
+        compositionend(view, event) {
+          // Chrome + 微软拼音在空段落首位输入时可能留下拼音前缀（如 ce测试）。
+          // 以“当前段落首部 -> 光标位置”的真实文本为准进行修正。
+          logIme(view, 'handler:compositionend', {
+            eventData: typeof event?.data === 'string' ? event.data : null,
+            imeStartedInEmptyBlock,
+          });
+
+          setTimeout(() => {
+            if (!imeStartedInEmptyBlock) return;
+
+            const { state } = view;
+            const { from, empty, $from } = state.selection;
+            if (!empty) return;
+
+            const blockStart = from - $from.parentOffset;
+            if (blockStart >= from) return;
+
+            const textBeforeCursor = state.doc.textBetween(blockStart, from, '\n', '\0');
+            const match = textBeforeCursor.match(/^([A-Za-z]{1,20})([\u3400-\u9FFF].*)$/);
+            if (!match) {
+              logIme(view, 'cleanup:skip-no-match');
+              return;
+            }
+
+            const fixedText = match[2];
+            logIme(view, 'cleanup:apply', {
+              original: textBeforeCursor,
+              fixedText,
+            });
+            view.dispatch(state.tr.insertText(fixedText, blockStart, from));
+          }, 0);
+
+          imeStartedInEmptyBlock = false;
+
+          return false;
+        },
+        }
+    },
     extensions: [
       StarterKit.configure({
         textStyle: false,
@@ -457,15 +611,18 @@ function initRichEditorDialog() {
     ],
     content: '',
     onUpdate: ({ editor }) => {
-    if (currentEditId) {
-        const index = appState.findIndex(item => item.id === currentEditId);
-        if (index !== -1) {
-        appState[index].content = editor.getHTML();
-        saveState();
-        }
-    }
+      if (!currentEditId) return;
+      const index = appState.findIndex(item => item.id === currentEditId);
+      if (index === -1) return;
+      appState[index].content = editor.getHTML();
+      saveState();
     }
   });
+
+  if (IME_DEBUG && currentEditor?.view) {
+    attachImeDebugListeners(currentEditor.view);
+    logIme(currentEditor.view, 'init:editor-ready');
+  }
 
   // 自定义粘贴处理（保留颜色样式）
   editorElement.addEventListener('paste', handlePaste);
