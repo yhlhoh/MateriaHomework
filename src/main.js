@@ -382,7 +382,7 @@ let editDialog = null;
 let currentEditor = null;
 let currentEditId = null;  
 let imeStartedInEmptyBlock = false;
-const IME_DEBUG = true;
+const IME_DEBUG = false;
 const imeDebugLogs = [];
 let imeGlobalDebugAttached = false;
 
