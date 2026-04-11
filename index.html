@@ -370,9 +370,9 @@
             <div slot="headline"> 富文本编辑器 </div>
             <!-- 外层使用 Flex 纵向排布，内层编辑器使用纯粹的 block -->
             <div slot="text" style="width:100%; max-height: 60vh; display: flex; flex-direction: column;">
-                
+                <div style="height:80px;"></div>
                 <!-- 工具栏 -->
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; position: absolute; background-color: rgba(255, 255, 255, 0.8); padding: 8px; border-radius: 8px; z-index: 1000;">
                     <s-icon-button id="bold-btn" title="加粗">
                         <s-icon src="/assets/bold.svg"></s-icon>
                     </s-icon-button>
@@ -397,7 +397,7 @@
                         <s-picker-item value="Times New Roman">Times New Roman</s-picker-item>
                     </s-picker>
                 </div>
-                <s-field>
+                <s-field style="height:250px; width:650px; overflow:auto;">
                     <div slot="label">请输入内容</div>
                     <div id="rich-editor"></div>
                 </s-field>
