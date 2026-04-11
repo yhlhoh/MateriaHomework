@@ -711,11 +711,24 @@ function initRichEditorDialog() {
   const confirmBtn = document.getElementById('text-edit-confirm');
   const cancelBtn = document.getElementById('text-edit-cancel');
 
-  if (confirmBtn) confirmBtn.onclick = () => {
+  const closeEditorDialog = () => {
+    if (!editDialog) return;
     editDialog.showed = false;
-    // 关闭时刷新任务列表显示
     renderUI();
   };
+
+  if (editDialog && !editDialog.__escCloseAttached) {
+    editDialog.__escCloseAttached = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!editDialog?.showed) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeEditorDialog();
+    }, true);
+  }
+
+  if (confirmBtn) confirmBtn.onclick = () => closeEditorDialog();
   if (cancelBtn) cancelBtn.onclick = () => {
     // 取消时恢复原有内容
     if (currentEditId !== null) {
@@ -723,8 +736,7 @@ function initRichEditorDialog() {
       const originalHtml = index === -1 ? '' : appState[index].content;
       currentEditor.commands.setContent(originalHtml || '<p></p>');
     }
-    editDialog.showed = false;
-    renderUI();
+    closeEditorDialog();
   };
 }
 
