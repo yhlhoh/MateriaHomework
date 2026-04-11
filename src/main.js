@@ -377,6 +377,68 @@ function getSelectedFontSize() {
   return 38; // 默认字号
 }
 
+function isEmptyEditorParagraph(view) {
+  const { state } = view;
+  const { doc, selection } = state;
+  if (!selection.empty) return false;
+  if (doc.childCount !== 1) return false;
+  const firstChild = doc.firstChild;
+  return !!firstChild && firstChild.type.name === 'paragraph' && firstChild.content.size === 0;
+}
+
+function shouldBlockEmptyEditorBackspace(view, event) {
+  if (!isEmptyEditorParagraph(view)) return false;
+  if (!event) return true;
+  if (event.key === 'Backspace') return true;
+  if (typeof event.inputType === 'string' && event.inputType.startsWith('deleteContentBackward')) return true;
+  return false;
+}
+
+function ensureProseMirrorMounted(mountEl) {
+  const viewDom = currentEditor?.view?.dom;
+  if (!mountEl || !viewDom) return;
+  if (!mountEl.contains(viewDom)) {
+    mountEl.innerHTML = '';
+    mountEl.appendChild(viewDom);
+  }
+}
+
+let richEditorDomObserver = null;
+
+function attachRichEditorGuards(mountEl) {
+  if (!mountEl || mountEl.__richEditorGuardsAttached) return;
+  mountEl.__richEditorGuardsAttached = true;
+
+  mountEl.style.cursor = 'text';
+
+  const guard = (e) => {
+    ensureProseMirrorMounted(mountEl);
+    const view = currentEditor?.view;
+    if (!view) return;
+    if (shouldBlockEmptyEditorBackspace(view, e)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  mountEl.addEventListener('keydown', guard, true);
+  mountEl.addEventListener('beforeinput', guard, true);
+
+  mountEl.addEventListener('pointerdown', () => {
+    ensureProseMirrorMounted(mountEl);
+    if (!currentEditor) return;
+    queueMicrotask(() => currentEditor.commands.focus());
+  }, true);
+
+  richEditorDomObserver = new MutationObserver(() => {
+    if (!currentEditor) return;
+    if (!mountEl.querySelector('.ProseMirror')) {
+      ensureProseMirrorMounted(mountEl);
+    }
+  });
+  richEditorDomObserver.observe(mountEl, { childList: true, subtree: true });
+}
+
 // 编辑器实例
 let editDialog = null;
 let currentEditor = null;
@@ -549,6 +611,20 @@ function initRichEditorDialog() {
     element: editorElement,
     editorProps: {
         handleDOMEvents: {
+        keydown(view, event) {
+          if (shouldBlockEmptyEditorBackspace(view, event)) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
+        beforeinput(view, event) {
+          if (shouldBlockEmptyEditorBackspace(view, event)) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
         compositionstart(view) {
           attachImeDebugListeners(view);
           const { state } = view;
@@ -609,7 +685,7 @@ function initRichEditorDialog() {
         allowBase64: true,
       }),
     ],
-    content: '',
+    content: '<p></p>',
     onUpdate: ({ editor }) => {
       if (!currentEditId) return;
       const index = appState.findIndex(item => item.id === currentEditId);
@@ -618,6 +694,9 @@ function initRichEditorDialog() {
       saveState();
     }
   });
+
+  attachRichEditorGuards(editorElement);
+  ensureProseMirrorMounted(editorElement);
 
   if (IME_DEBUG && currentEditor?.view) {
     attachImeDebugListeners(currentEditor.view);
@@ -640,8 +719,9 @@ function initRichEditorDialog() {
   if (cancelBtn) cancelBtn.onclick = () => {
     // 取消时恢复原有内容
     if (currentEditId !== null) {
-      const originalHtml = appState[currentEditId].content;
-      currentEditor.commands.setContent(originalHtml);
+      const index = appState.findIndex(item => item.id === currentEditId);
+      const originalHtml = index === -1 ? '' : appState[index].content;
+      currentEditor.commands.setContent(originalHtml || '<p></p>');
     }
     editDialog.showed = false;
     renderUI();
@@ -760,9 +840,12 @@ function insertImageToEditor() {
 function openEditDialog(id, currentHtml) {
   currentEditId = id;
   if (!currentEditor) return;
-  currentEditor.commands.setContent(currentHtml || '');
+  const editorElement = document.getElementById('rich-editor');
+  ensureProseMirrorMounted(editorElement);
+  currentEditor.commands.setContent(currentHtml || '<p></p>');
   if (editDialog) editDialog.showed = true;
   setTimeout(() => {
+    ensureProseMirrorMounted(editorElement);
     currentEditor.commands.focus();
     currentEditor.commands.selectAll();
   }, 50);

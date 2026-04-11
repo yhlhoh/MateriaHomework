@@ -290,6 +290,11 @@
             height: 30vh;
             width: 40vw;
         }
+
+        #rich-editor .ProseMirror {
+            height: 100%;
+            min-height: 100%;
+        }
         #rich-editor,
         .ProseMirror {
             outline: none !important;
@@ -394,7 +399,7 @@
                 </div>
                 <s-field>
                     <div slot="label">请输入内容</div>
-                    <div id="rich-editor" contenteditable="true" ></div>
+                    <div id="rich-editor"></div>
                 </s-field>
             </div>
             <s-button slot="action" type="text" id="text-edit-cancel">取消</s-button>
