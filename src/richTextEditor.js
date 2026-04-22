@@ -2,8 +2,9 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 
 const Parchment = Quill.import('parchment');
-const SizeStyle = new Parchment.Attributor.Style('size', 'font-size');
-const FontStyle = new Parchment.Attributor.Style('font', 'font-family');
+const { StyleAttributor, Scope } = Parchment;
+const SizeStyle = new StyleAttributor('size', 'font-size', { scope: Scope.INLINE });
+const FontStyle = new StyleAttributor('font', 'font-family', { scope: Scope.INLINE });
 Quill.register(SizeStyle, true);
 Quill.register(FontStyle, true);
 
