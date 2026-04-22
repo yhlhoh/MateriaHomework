@@ -8,13 +8,17 @@ Quill.register(SizeStyle, true);
 Quill.register(FontStyle, true);
 
 const DEFAULT_FONT_SIZE = 38;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 150;
+const FONT_SIZE_STEP = 4;
+const EDITOR_FOCUS_DELAY = 50;
 
 function getSelectedFontSize(quill) {
   const range = quill.getSelection();
   if (!range || range.length <= 0) return DEFAULT_FONT_SIZE;
   const formats = quill.getFormat(range);
   const sizeText = typeof formats.size === 'string' ? formats.size : `${DEFAULT_FONT_SIZE}px`;
-  const parsed = Number.parseInt(sizeText, 10);
+  const parsed = parseInt(sizeText, 10);
   return Number.isNaN(parsed) ? DEFAULT_FONT_SIZE : parsed;
 }
 
@@ -38,6 +42,18 @@ function insertImageToEditor(quill) {
   input.click();
 }
 
+function setEditorHtml(quill, html) {
+  const delta = quill.clipboard.convert({ html });
+  quill.setContents(delta, 'silent');
+}
+
+function getEditorHtml(quill) {
+  if (typeof quill.getSemanticHTML === 'function') {
+    return quill.getSemanticHTML();
+  }
+  return quill.root.innerHTML;
+}
+
 export function createRichTextEditor({
   appState,
   getCurrentEditId,
@@ -48,25 +64,30 @@ export function createRichTextEditor({
   let editDialog = null;
   let quill = null;
   let originalHtml = '';
+  let draftHtml = '';
+  let draftSyncRafId = null;
 
   const closeEditorDialog = () => {
     if (!editDialog) return;
+    setCurrentEditId(null);
     editDialog.showed = false;
     renderUI();
   };
 
-  const handleConfirm = () => closeEditorDialog();
-  const handleCancel = () => {
+  const handleConfirm = () => {
     const currentEditId = getCurrentEditId();
     if (currentEditId !== null) {
       const index = appState.findIndex((item) => item.id === currentEditId);
       if (index !== -1) {
-        appState[index].content = originalHtml;
+        appState[index].content = draftHtml;
         saveState();
       }
     }
+    closeEditorDialog();
+  };
+  const handleCancel = () => {
     if (quill) {
-      quill.root.innerHTML = originalHtml || '<p><br></p>';
+      setEditorHtml(quill, originalHtml || '<p><br></p>');
     }
     closeEditorDialog();
   };
@@ -93,7 +114,7 @@ export function createRichTextEditor({
         const range = quill.getSelection();
         if (!range || range.length <= 0) return;
         const currentSize = getSelectedFontSize(quill);
-        const newSize = Math.min(150, Math.max(8, currentSize + 4));
+        const newSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, currentSize + FONT_SIZE_STEP));
         quill.format('size', `${newSize}px`, 'user');
         quill.focus();
       });
@@ -107,7 +128,7 @@ export function createRichTextEditor({
         const range = quill.getSelection();
         if (!range || range.length <= 0) return;
         const currentSize = getSelectedFontSize(quill);
-        const newSize = Math.min(150, Math.max(8, currentSize - 4));
+        const newSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, currentSize - FONT_SIZE_STEP));
         quill.format('size', `${newSize}px`, 'user');
         quill.focus();
       });
@@ -153,12 +174,13 @@ export function createRichTextEditor({
     quill.root.style.lineHeight = '1.2';
 
     quill.on('text-change', () => {
-      const currentEditId = getCurrentEditId();
-      if (!currentEditId) return;
-      const index = appState.findIndex((item) => item.id === currentEditId);
-      if (index === -1) return;
-      appState[index].content = quill.root.innerHTML;
-      saveState();
+      if (draftSyncRafId !== null) {
+        cancelAnimationFrame(draftSyncRafId);
+      }
+      draftSyncRafId = requestAnimationFrame(() => {
+        draftHtml = getEditorHtml(quill);
+        draftSyncRafId = null;
+      });
     });
 
     bindEditorButtons();
@@ -187,13 +209,14 @@ export function createRichTextEditor({
     setCurrentEditId(id);
     if (!quill) return;
     originalHtml = currentHtml || '<p><br></p>';
-    quill.root.innerHTML = originalHtml;
+    draftHtml = originalHtml;
+    setEditorHtml(quill, originalHtml);
     if (editDialog) editDialog.showed = true;
     setTimeout(() => {
       quill.focus();
       const length = quill.getLength();
-      quill.setSelection(0, Math.max(length - 1, 0), 'silent');
-    }, 50);
+      quill.setSelection(0, length, 'silent');
+    }, EDITOR_FOCUS_DELAY);
   }
 
   return {
