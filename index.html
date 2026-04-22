@@ -291,20 +291,28 @@
             width: 40vw;
         }
 
-        #rich-editor .ProseMirror {
+        #rich-editor .ql-container {
             height: 100%;
             min-height: 100%;
+            border: none;
+            background: transparent;
         }
+
+        #rich-editor .ql-editor {
+            height: 100%;
+            min-height: 100%;
+            padding: 0;
+        }
+
         #rich-editor,
-        .ProseMirror {
+        #rich-editor .ql-editor {
             outline: none !important;
             box-shadow: none !important;
             font-size: 38px;
             -webkit-tap-highlight-color: transparent;
         }
 
-        #rich-editor *:focus,
-        .ProseMirror *:focus {
+        #rich-editor *:focus {
             outline: none !important;
             box-shadow: none !important;
         }
