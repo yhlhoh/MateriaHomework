@@ -76,6 +76,13 @@ export function createRichTextEditor({
   };
 
   const handleConfirm = () => {
+    if (quill) {
+      if (draftSyncRafId !== null) {
+        cancelAnimationFrame(draftSyncRafId);
+        draftSyncRafId = null;
+      }
+      draftHtml = getEditorHtml(quill);
+    }
     const currentEditId = getCurrentEditId();
     if (currentEditId !== null) {
       const index = appState.findIndex((item) => item.id === currentEditId);
@@ -154,6 +161,22 @@ export function createRichTextEditor({
           quill.format('font', family, 'user');
         } else {
           quill.format('font', false, 'user');
+        }
+        quill.focus();
+      });
+    }
+
+    const colorPicker = document.getElementById('color-picker');
+    if (colorPicker) {
+      colorPicker.addEventListener('change', (e) => {
+        if (!quill) return;
+        const range = quill.getSelection();
+        if (!range || range.length <= 0) return;
+        const color = e.target?.value || '';
+        if (color) {
+          quill.format('color', color, 'user');
+        } else {
+          quill.format('color', false, 'user');
         }
         quill.focus();
       });
