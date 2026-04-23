@@ -1,15 +1,11 @@
-// 0个人喜欢用1 2 3 4 5 6 7分模块……
-// 但是现在不太有动力（虽然这是必须的）扁平化重构……
-// 会改的……吧
-
-// ==================== 1. 导入依赖 ====================
+// ==================== 导入依赖 ====================
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
 import 'sober';
 import { createScheme } from 'sober-theme';
 import { createRichTextEditor } from './richTextEditor';
 
-// ==================== 2. IndexedDB存储 ====================
+// ==================== IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open('KanbanDB', 1);
     req.onupgradeneeded = e => e.target.result.createObjectStore('store');
@@ -31,7 +27,7 @@ async function getDB(key) {
     return new Promise(r => req.onsuccess = () => r(req.result));
 }
 
-// ==================== 3. 内联SVG替换器 ====================
+// ==================== 内联SVG替换器 ====================
 const svgCache = new Map();
 
 async function replaceIconMasks(container = document) {
@@ -90,18 +86,18 @@ async function replaceIconMasks(container = document) {
     await Promise.all(promises);
 }
 
-// ==================== 4. 全局状态与看板逻辑 ====================
+// ==================== 全局状态与看板逻辑 ====================
 let appState = [];
 const defaultSubjects = [
-    { id: 's1', name: '语文', icon: 'assets/chinese.svg', content: ' ', isDeleted: false },
-    { id: 's2', name: '数学', icon: 'assets/mathematics.svg', content: ' ', isDeleted: false },
-    { id: 's3', name: '英语', icon: 'assets/english.svg', content: ' ', isDeleted: false },
-    { id: 's4', name: '物理', icon: 'assets/physics.svg', content: ' ', isDeleted: false },
-    { id: 's5', name: '化学', icon: 'assets/chemistry.svg', content: ' ', isDeleted: false },
-    { id: 's6', name: '生物', icon: 'assets/biology.svg', content: ' ', isDeleted: false },
-    { id: 's7', name: '历史', icon: 'assets/history.svg', content: ' ', isDeleted: false },
-    { id: 's8', name: '政治', icon: 'assets/politics.svg', content: ' ', isDeleted: false },
-    { id: 's9', name: '地理', icon: 'assets/geography.svg', content: ' ', isDeleted: false }
+    { id: 's1', name: '语文', icon: 'assets/chinese.svg', content: '', isDeleted: false },
+    { id: 's2', name: '数学', icon: 'assets/mathematics.svg', content: '', isDeleted: false },
+    { id: 's3', name: '英语', icon: 'assets/english.svg', content: '', isDeleted: false },
+    { id: 's4', name: '物理', icon: 'assets/physics.svg', content: '', isDeleted: false },
+    { id: 's5', name: '化学', icon: 'assets/chemistry.svg', content: '', isDeleted: false },
+    { id: 's6', name: '生物', icon: 'assets/biology.svg', content: '', isDeleted: false },
+    { id: 's7', name: '历史', icon: 'assets/history.svg', content: '', isDeleted: false },
+    { id: 's8', name: '政治', icon: 'assets/politics.svg', content: '', isDeleted: false },
+    { id: 's9', name: '地理', icon: 'assets/geography.svg', content: '', isDeleted: false }
 ];
 
 function initData() {
@@ -228,23 +224,7 @@ function updateTaskContentById(taskId, newHtml) {
     }
 }
 
-// ==================== 5. 富文本编辑器 ====================
-let currentEditId = null;
-
-const richTextEditor = createRichTextEditor({
-  appState,
-  getCurrentEditId: () => currentEditId,
-  setCurrentEditId: (id) => {
-    currentEditId = id;
-  },
-  saveState,
-  renderUI,
-});
-
-const initRichEditorDialog = richTextEditor.initRichEditorDialog;
-const openEditDialog = richTextEditor.openEditDialog;
-
-// ==================== 6. 主题应用 + 主色缓存 ====================
+// ==================== 主题应用 + 主色缓存 ====================
 const PRIMARY_COLOR_CACHE_KEY = 'cached_primary_color';
 
 function getCachedPrimaryColor() {
@@ -306,7 +286,7 @@ async function applyMaterialYouTheme(source) {
     }
 }
 
-// ==================== 7. 图片操作 ====================
+// ==================== 图片操作 ====================
 let savedCustomImages = [];
 let currentBgObjectUrl = null;
 
@@ -402,7 +382,7 @@ function createCustomImgElement(id, file) {
     container.appendChild(ripple);
 }
 
-// ==================== 8. 时钟 ====================
+// ==================== 时钟 ====================
 function updateClock() {
     const now = new Date();
     document.getElementById('hours').textContent = String(now.getHours()).padStart(2, '0');
@@ -411,7 +391,7 @@ function updateClock() {
     document.getElementById('date').textContent = `${days[now.getDay()]}, ${now.getMonth() + 1}月${now.getDate()}日`;
 }
 
-// ==================== 9. 截图导出 ====================
+// ==================== 截图导出 ====================
 function disableTransitionsTemp() {
     const style = document.createElement('style');
     style.id = 'temp-disable-transitions';
@@ -449,7 +429,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     }
 });
 
-// ==================== 10. 自适应缩放 ====================
+// ==================== 自适应缩放 ====================
 let scaleRafId = 0;
 let scalePanel = null;
 
@@ -495,7 +475,7 @@ function scheduleScale() {
 
 window.recomputeScale = recomputeScale;
 
-// ==================== 11. Service Worker ====================
+// ==================== Service Worker ====================
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
@@ -504,7 +484,7 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// ==================== 12. 初始化 ====================
+// ==================== 初始化 ====================
 setInterval(updateClock, 1000);
 updateClock();
 
@@ -520,7 +500,7 @@ window.resetPic = function() {
 };
 
 (async () => {
-    initRichEditorDialog();
+
     await initData();
     await loadImages();
     await replaceIconMasks(document.querySelector('.controls'));
@@ -540,8 +520,23 @@ window.resetPic = function() {
     const modal = document.querySelector('.loading-modal');
     modal.classList.add('fade-out');
     modal.addEventListener('transitionend', () => modal.remove());
+        initRichEditorDialog();
 })();
 
 document.getElementById('full-screen-btn').addEventListener('click', () => {
     if (screenfull.isEnabled) screenfull.toggle();
 });
+
+let currentEditId = null;
+const richTextEditor = createRichTextEditor({
+  appState,
+  getCurrentEditId: () => currentEditId,
+  setCurrentEditId: (id) => {
+    currentEditId = id;
+  },
+  saveState,
+  renderUI,
+});
+
+const initRichEditorDialog = richTextEditor.initRichEditorDialog;
+const openEditDialog = richTextEditor.openEditDialog;
