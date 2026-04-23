@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate', // 自动更新 Service Worker
-      includeAssets: ['assets/favicon_192x.png', 'assets/favicon_512x.png'],
+      includeAssets: [],
       manifest: {
         name: '作业看板',
         short_name: '作业看板',
@@ -30,6 +30,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,txt,woff2}'], // 预缓存文件
+        globIgnores: ['**/favicon_*.png'], // 排除图标PNG（由manifest icons单独管理）
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
