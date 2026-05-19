@@ -226,6 +226,12 @@ export function createRichTextEditor({
         },
         true,
       );
+    document.addEventListener('keydown', function(event) {
+        if (event.ctrlKey && event.key === 'Enter') {
+          event.preventDefault(); // 阻止换行
+          confirmBtn.click();
+        }
+  });
     }
   }
 
