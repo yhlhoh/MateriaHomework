@@ -126,7 +126,6 @@ async function renderUI() {
     const restorePanel = document.getElementById('restore-panel');
 
     taskList.innerHTML = '';
-    if (restorePanel) restorePanel.innerHTML = '';
 
     appState.forEach((subject) => {
         if (!subject.isDeleted) {
@@ -203,140 +202,7 @@ async function renderSubjectManageDialog() {
             <div style="display: flex; align-items: center; gap: 8px;">
                 <s-switch id="switch-${subject.id}"></s-switch>
                 <s-icon-button id="delete-${subject.id}" type="standard" style="color: var(--s-color-error, #d32f2f);">
-                    <s-icon name="close"></s-icon>
-                </s-icon-button>
-            </div>
-        `;
-        
-        // 拖动事件
-        itemDiv.addEventListener('dragstart', (e) => {
-            draggedSubject = subject;
-            itemDiv.style.opacity = '0.5';
-        });
-        
-        itemDiv.addEventListener('dragend', (e) => {
-            itemDiv.style.opacity = '1';
-            draggedSubject = null;
-        });
-        
-        itemDiv.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            if (draggedSubject && draggedSubject.id !== subject.id) {
-                itemDiv.style.borderTop = '2px solid var(--s-color-primary, #FFA3B1)';
-            }
-        });
-        
-        itemDiv.addEventListener('dragleave', (e) => {
-            itemDiv.style.borderTop = '';
-        });
-        
-        itemDiv.addEventListener('drop', (e) => {
-            e.preventDefault();
-            itemDiv.style.borderTop = '';
-            if (!draggedSubject || draggedSubject.id === subject.id) return;
-            
-            const draggedIndex = appState.findIndex(s => s.id === draggedSubject.id);
-            const targetIndex = appState.findIndex(s => s.id === subject.id);
-            
-            if (draggedIndex !== -1 && targetIndex !== -1) {
-                const temp = appState[draggedIndex];
-                appState[draggedIndex] = appState[targetIndex];
-                appState[targetIndex] = temp;
-                saveState();
-                renderSubjectManageDialog();
-            }
-        });
-        
-        container.appendChild(itemDiv);
-        
-        // 开关事件 - 设置初始状态并绑定事件
-        const switchEl = itemDiv.querySelector(`#switch-${subject.id}`);
-        if (switchEl) {
-            // 设置初始checked状态
-            switchEl.checked = !subject.isDeleted;
-            switchEl.addEventListener('change', () => {
-                subject.isDeleted = !switchEl.checked;
-                saveState();
-                renderUI();
-            });
-        }
-        
-        // 删除按钮事件
-        const deleteBtn = itemDiv.querySelector(`#delete-${subject.id}`);
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => {
-                const deleteIndex = appState.findIndex(s => s.id === subject.id);
-                if (deleteIndex !== -1) {
-                    appState.splice(deleteIndex, 1);
-                    saveState();
-                    renderUI();
-                    renderSubjectManageDialog();
-                }
-            });
-        }
-    });
-    
-    await replaceIconMasks(container);
-}
-
-async function openSubjectManageDialog() {
-    const dialog = document.getElementById('subject-manage-dialog');
-    if (dialog) {
-        await renderSubjectManageDialog();
-        dialog.showed = true;
-    }
-}
-
-function openAddSubjectDialog() {
-    // 重置表单状态
-    const nameInput = document.getElementById('new-subject-name');
-    const iconPicker = document.getElementById('new-subject-icon');
-    
-    if (nameInput) nameInput.value = '';
-    if (iconPicker) iconPicker.value = '';
-    
-    const dialog = document.getElementById('add-subject-dialog');
-    if (dialog) {
-        dialog.showed = true;
-    }
-}
-
-// ==================== 科目管理功能 ====================
-let draggedSubject = null;
-
-async function renderSubjectManageDialog() {
-    const container = document.getElementById('subject-list-container');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    appState.forEach((subject, index) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'subject-manage-item';
-        itemDiv.draggable = true;
-        itemDiv.setAttribute('data-id', subject.id);
-        itemDiv.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            background-color: var(--s-color-surface-variant, #FAE4E7);
-            border-radius: 12px;
-            cursor: move;
-            transition: background-color 0.2s, transform 0.2s;
-            user-select: none;
-        `;
-        
-        itemDiv.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                <span class="subject-drag-handle" style="cursor: grab; color: var(--s-color-on-surface, #3E1914); opacity: 0.6; font-size: 20px;">≡</span>
-                <span class="subject-icon-mask" style="--icon-url: url('${subject.icon}'); width: 24px; height: 24px; display: inline-block;"></span>
-                <span style="font-weight: 500; color: var(--s-color-on-surface, #3E1914);">${subject.name}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <s-switch id="switch-${subject.id}"></s-switch>
-                <s-icon-button id="delete-${subject.id}" type="standard" style="color: var(--s-color-error, #d32f2f);">
-                    <s-icon name="close"></s-icon>
+                    <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
                 </s-icon-button>
             </div>
         `;
@@ -771,7 +637,7 @@ window.resetPic = function() {
     
     // ==================== 科目管理事件监听 ====================
     // 打开科目管理对话框
-    const manageSubjectMenuBtn = document.getElementById('manage-subject-menu-item');
+    const manageSubjectMenuBtn = document.getElementById('manage-subject-btn');
     if (manageSubjectMenuBtn) {
         manageSubjectMenuBtn.addEventListener('click', async () => {
             await openSubjectManageDialog();
