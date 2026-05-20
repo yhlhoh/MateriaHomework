@@ -346,8 +346,9 @@
                 <s-ripple attached="true"></s-ripple>
             </button>
             <s-popup-menu>
-                <button id="clear-all-btn" class="primary-btn" data-name="清除内容" slot="trigger">                <span class="icon-mask" style="--icon-url: url('assets/clear.svg')" aria-hidden="true"></span>
+                <button id="clear-all-btn" class="primary-btn" data-name="管理科目" slot="trigger">                <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple></button>
+                <s-popup-menu-item id="manage-subject-menu-item">管理科目</s-popup-menu-item>
                 <s-popup-menu-item onclick="resetPic();setTimeout(location.reload.bind(location), 1000);">清除图片</s-popup-menu-item>
                 <s-popup-menu-item onclick="document.getElementById('reset-content-dialog').showed = true;">清除作业</s-popup-menu-item>
             </s-popup-menu>
@@ -374,6 +375,7 @@
 
         <!-- 右下角恢复区 -->
         <div class="restore-panel" id="restore-panel"></div>
+        <!-- 对话框 -->
 
         <!-- 富文本编辑面板 -->
         <s-dialog id="text-edit-panel">
@@ -432,6 +434,45 @@
                 <s-button slot="action" type="text">取消</s-button>
                 <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetContent(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
             </s-dialog>
+
+        <!-- 科目管理对话框 -->
+        <s-dialog id="subject-manage-dialog" size="standard">
+            <div slot="headline">科目管理</div>
+            <div slot="text">
+                <div id="subject-list-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; padding: 12px 0;">
+                    <!-- 科目列表项将动态生成 -->
+                </div>
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--s-color-outline, #ccc);">
+                    <s-button id="add-subject-btn" type="filled" style="width: 100%;">
+                        <s-icon slot="start" src="assets/add.svg"></s-icon>
+                        添加新科目
+                    </s-button>
+                </div>
+            </div>
+            <s-button slot="action" type="text" id="subject-manage-close">关闭</s-button>
+        </s-dialog>
+
+        <!-- 添加科目对话框 -->
+        <s-dialog id="add-subject-dialog">
+            <div slot="headline">添加科目</div>
+            <div slot="text" style="display: flex; flex-direction: column; gap: 12px;">
+                <s-text-field id="new-subject-name" label="科目名称" placeholder="输入科目名称"></s-text-field>
+                <s-picker id="new-subject-icon" label="选择图标">
+                    <s-picker-item value="assets/chinese.svg">语文</s-picker-item>
+                    <s-picker-item value="assets/mathematics.svg">数学</s-picker-item>
+                    <s-picker-item value="assets/english.svg">英语</s-picker-item>
+                    <s-picker-item value="assets/physics.svg">物理</s-picker-item>
+                    <s-picker-item value="assets/chemistry.svg">化学</s-picker-item>
+                    <s-picker-item value="assets/biology.svg">生物</s-picker-item>
+                    <s-picker-item value="assets/history.svg">历史</s-picker-item>
+                    <s-picker-item value="assets/politics.svg">政治</s-picker-item>
+                    <s-picker-item value="assets/geography.svg">地理</s-picker-item>
+                </s-picker>
+            </div>
+            <s-button slot="action" type="text" id="add-subject-cancel">取消</s-button>
+            <s-button slot="action" type="text" id="add-subject-confirm">确定</s-button>
+        </s-dialog>
+
         <script>
             (async function getVersion() {
                 try {
