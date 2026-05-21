@@ -105,13 +105,33 @@ function initData() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            appState = defaultSubjects.map(def => {
-                const found = parsed.find(p => p.id === def.id);
-                if (found) {
-                    return { ...def, content: found.content || '', isDeleted: found.isDeleted || false };
-                }
-                return { ...def, content: '', isDeleted: false };
-            });
+            if (Array.isArray(parsed)) {
+                const defaultMap = new Map(defaultSubjects.map(s => [s.id, s]));
+                appState = parsed
+                    .filter(p => p && typeof p === 'object' && typeof p.id === 'string')
+                    .map(p => {
+                        const def = defaultMap.get(p.id);
+                        const base = def
+                            ? { ...def }
+                            : {
+                                id: p.id,
+                                name: p.name || '未命名',
+                                icon: p.icon || '',
+                                content: '',
+                                isDeleted: false,
+                            };
+                        return {
+                            ...base,
+                            ...p,
+                            name: (p.name ?? base.name) || '未命名',
+                            icon: (p.icon ?? base.icon) || '',
+                            content: (p.content ?? '') || '',
+                            isDeleted: Boolean(p.isDeleted),
+                        };
+                    });
+            } else {
+                appState = JSON.parse(JSON.stringify(defaultSubjects));
+            }
         } catch (e) {
             appState = JSON.parse(JSON.stringify(defaultSubjects));
         }
@@ -131,9 +151,12 @@ async function renderUI() {
         if (!subject.isDeleted) {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'task-item';
+            const iconHtml = subject.icon
+                ? `<span class="icon-mask" style="--icon-url: url('${subject.icon}')" aria-hidden="true"></span>`
+                : '';
             itemDiv.innerHTML = `
                 <div class="subject-tag">
-                    <span class="icon-mask" style="--icon-url: url('${subject.icon}')" aria-hidden="true"></span>
+                    ${iconHtml}
                     <span>${subject.name}</span>
                 </div>
                 <div class="task-content" data-id="${subject.id}">${subject.content}</div>
@@ -155,20 +178,230 @@ async function renderUI() {
     await replaceIconMasks(taskList);
 }
 
-function resetPic() {
-    indexedDB.deleteDatabase('KanbanDB');
-}
-
-window.resetPic = resetPic;
-
-function resetContent() {
-  localStorage.removeItem('kanban_data');
-}
-
-window.resetContent = resetContent;
-
 // ==================== 科目管理功能 ====================
 let draggedSubject = null;
+
+let subjectManagePrevPositions = null;
+
+function createDragGhost(fromEl) {
+    const ghost = fromEl.cloneNode(true);
+    ghost.style.position = 'fixed';
+    ghost.style.left = '0px';
+    ghost.style.top = '0px';
+    ghost.style.zIndex = '2147483647';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.margin = '0';
+    ghost.style.width = `${fromEl.getBoundingClientRect().width}px`;
+    ghost.style.opacity = '0.85';
+    ghost.style.transform = 'translate(-9999px, -9999px)';
+    ghost.style.boxShadow = '0 10px 24px rgba(0,0,0,0.18)';
+    ghost.style.border = '1px solid rgba(0,0,0,0.06)';
+    ghost.style.backdropFilter = 'blur(6px)';
+    return ghost;
+}
+
+function positionDragGhost(ghost, clientX, clientY) {
+    if (!ghost) return;
+    // 让预览略偏移，避免遮挡指示线
+    const dx = 12;
+    const dy = 12;
+    ghost.style.transform = `translate(${clientX + dx}px, ${clientY + dy}px)`;
+}
+
+function startAutoScroll(container, getPointerY) {
+    if (!container) return () => {};
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    const EDGE = 36;
+    const MAX_STEP = prefersReduced ? 18 : 26;
+    let rafId = 0;
+    let running = true;
+
+    const tick = () => {
+        if (!running) return;
+        const y = getPointerY();
+        const rect = container.getBoundingClientRect();
+        let delta = 0;
+
+        if (y < rect.top + EDGE) {
+            const t = clamp((rect.top + EDGE - y) / EDGE, 0, 1);
+            delta = -Math.ceil(t * MAX_STEP);
+        } else if (y > rect.bottom - EDGE) {
+            const t = clamp((y - (rect.bottom - EDGE)) / EDGE, 0, 1);
+            delta = Math.ceil(t * MAX_STEP);
+        }
+
+        if (delta !== 0) {
+            container.scrollTop += delta;
+        }
+
+        rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => {
+        running = false;
+        cancelAnimationFrame(rafId);
+    };
+}
+
+function captureSubjectManagePositions(container) {
+    const map = new Map();
+    if (!container) return map;
+    container.querySelectorAll('.subject-manage-item').forEach(el => {
+        const id = el.getAttribute('data-id');
+        if (!id) return;
+        map.set(id, el.getBoundingClientRect());
+    });
+    return map;
+}
+
+function animateSubjectManageFromPositions(container, prevPositions) {
+    if (!container || !prevPositions || prevPositions.size === 0) return;
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (prefersReduced) return;
+
+    container.querySelectorAll('.subject-manage-item').forEach(el => {
+        const id = el.getAttribute('data-id');
+        if (!id) return;
+        const prev = prevPositions.get(id);
+        if (!prev) return;
+        const next = el.getBoundingClientRect();
+        const dx = prev.left - next.left;
+        const dy = prev.top - next.top;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+        el.animate(
+            [
+                { transform: `translate(${dx}px, ${dy}px)` },
+                { transform: 'translate(0px, 0px)' },
+            ],
+            {
+                duration: 220,
+                easing: 'cubic-bezier(0.2, 0, 0, 1)',
+            },
+        );
+    });
+}
+
+function clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+}
+
+function moveSubjectInState(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
+    if (fromIndex < 0 || toIndex < 0) return;
+    if (fromIndex >= appState.length || toIndex >= appState.length) return;
+    const [moved] = appState.splice(fromIndex, 1);
+    appState.splice(toIndex, 0, moved);
+}
+
+function getManageItemElFromPoint(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    if (!el) return null;
+    return el.closest?.('.subject-manage-item') || null;
+}
+
+function attachPointerSort(handleEl, itemEl) {
+    if (!handleEl || !itemEl) return;
+    // 触屏/部分浏览器不支持 HTML5 DnD：用 PointerEvents 作为兼容排序
+    handleEl.style.touchAction = 'none';
+
+    const onPointerDown = (e) => {
+        // 只允许主键拖拽
+        if (e.button != null && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const draggedId = itemEl.getAttribute('data-id');
+        if (!draggedId) return;
+
+        let lastOverId = null;
+        let lastInsertAfter = false;
+
+        const container = document.getElementById('subject-list-container');
+        let lastPointerX = e.clientX;
+        let lastPointerY = e.clientY;
+        const stopAutoScroll = startAutoScroll(container, () => lastPointerY);
+
+        const ghost = createDragGhost(itemEl);
+        document.body.appendChild(ghost);
+        positionDragGhost(ghost, lastPointerX, lastPointerY);
+
+        itemEl.classList.add('is-dragging');
+        itemEl.style.opacity = '0.6';
+
+        try {
+            handleEl.setPointerCapture(e.pointerId);
+        } catch {
+            // ignore
+        }
+
+        const clearIndicators = () => {
+            document.querySelectorAll('.subject-manage-item').forEach(el => {
+                el.style.borderTop = '';
+                el.style.borderBottom = '';
+            });
+        };
+
+        const onMove = (ev) => {
+            lastPointerX = ev.clientX;
+            lastPointerY = ev.clientY;
+            positionDragGhost(ghost, lastPointerX, lastPointerY);
+
+            const overEl = getManageItemElFromPoint(ev.clientX, ev.clientY);
+            if (!overEl || overEl === itemEl) {
+                clearIndicators();
+                return;
+            }
+            const overId = overEl.getAttribute('data-id');
+            if (!overId) return;
+
+            clearIndicators();
+            const rect = overEl.getBoundingClientRect();
+            const insertAfter = ev.clientY > rect.top + rect.height / 2;
+            if (insertAfter) overEl.style.borderBottom = '2px solid var(--s-color-primary, #FFA3B1)';
+            else overEl.style.borderTop = '2px solid var(--s-color-primary, #FFA3B1)';
+            lastOverId = overId;
+            lastInsertAfter = insertAfter;
+        };
+
+        const onUp = () => {
+            stopAutoScroll();
+            ghost.remove();
+
+            itemEl.classList.remove('is-dragging');
+            itemEl.style.opacity = '1';
+            clearIndicators();
+
+            if (lastOverId && lastOverId !== draggedId) {
+                const beforePositions = captureSubjectManagePositions(container);
+                const fromIndex = appState.findIndex(s => s.id === draggedId);
+                let toIndex = appState.findIndex(s => s.id === lastOverId);
+                if (fromIndex !== -1 && toIndex !== -1) {
+                    if (lastInsertAfter) toIndex += 1;
+                    // 从前往后移动时，移除元素会导致目标 index -1
+                    if (fromIndex < toIndex) toIndex -= 1;
+                    toIndex = clamp(toIndex, 0, appState.length - 1);
+                    moveSubjectInState(fromIndex, toIndex);
+                    saveState();
+                    renderUI();
+                    subjectManagePrevPositions = beforePositions;
+                    renderSubjectManageDialog();
+                }
+            }
+
+            handleEl.removeEventListener('pointermove', onMove);
+            handleEl.removeEventListener('pointerup', onUp);
+            handleEl.removeEventListener('pointercancel', onUp);
+        };
+
+        handleEl.addEventListener('pointermove', onMove);
+        handleEl.addEventListener('pointerup', onUp);
+        handleEl.addEventListener('pointercancel', onUp);
+    };
+
+    handleEl.addEventListener('pointerdown', onPointerDown);
+}
 
 async function renderSubjectManageDialog() {
     const container = document.getElementById('subject-list-container');
@@ -192,11 +425,17 @@ async function renderSubjectManageDialog() {
             transition: background-color 0.2s, transform 0.2s;
             user-select: none;
         `;
+        itemDiv.style.willChange = 'transform';
+        itemDiv.style.animation = 'fadeIn 0.25s ease forwards';
         
+        const iconHtml = subject.icon
+            ? `<span class="icon-mask" style="--icon-url: url('${subject.icon}'); width: 24px; height: 24px; display: inline-block;" aria-hidden="true"></span>`
+            : '';
+
         itemDiv.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
                 <span class="subject-drag-handle" style="cursor: grab; color: var(--s-color-on-surface, #3E1914); opacity: 0.6; font-size: 20px;">≡</span>
-                <span class="subject-icon-mask" style="--icon-url: url('${subject.icon}'); width: 24px; height: 24px; display: inline-block;"></span>
+                ${iconHtml}
                 <span style="font-weight: 500; color: var(--s-color-on-surface, #3E1914);">${subject.name}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -209,42 +448,89 @@ async function renderSubjectManageDialog() {
         
         // 拖动事件
         itemDiv.addEventListener('dragstart', (e) => {
+            // 仅允许从“≡”手柄开始拖拽，避免开关/按钮误触
+            const fromHandle = e.target?.closest?.('.subject-drag-handle');
+            if (!fromHandle) {
+                e.preventDefault();
+                return;
+            }
             draggedSubject = subject;
             itemDiv.style.opacity = '0.5';
+            itemDiv.style.transform = 'scale(1.01)';
+            // Firefox 需要 setData 才会触发拖拽
+            try {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', subject.id);
+            } catch {
+                // ignore
+            }
         });
         
         itemDiv.addEventListener('dragend', (e) => {
             itemDiv.style.opacity = '1';
+            itemDiv.style.transform = '';
             draggedSubject = null;
         });
         
         itemDiv.addEventListener('dragover', (e) => {
             e.preventDefault();
+            // 拖拽靠近边缘时自动滚动（增强可用性）
+            const container = document.getElementById('subject-list-container');
+            if (container) {
+                const rect = container.getBoundingClientRect();
+                const EDGE = 36;
+                const MAX_STEP = 22;
+                if (e.clientY < rect.top + EDGE) {
+                    const t = clamp((rect.top + EDGE - e.clientY) / EDGE, 0, 1);
+                    container.scrollTop -= Math.ceil(t * MAX_STEP);
+                } else if (e.clientY > rect.bottom - EDGE) {
+                    const t = clamp((e.clientY - (rect.bottom - EDGE)) / EDGE, 0, 1);
+                    container.scrollTop += Math.ceil(t * MAX_STEP);
+                }
+            }
             if (draggedSubject && draggedSubject.id !== subject.id) {
-                itemDiv.style.borderTop = '2px solid var(--s-color-primary, #FFA3B1)';
+                const rect = itemDiv.getBoundingClientRect();
+                const insertAfter = e.clientY > rect.top + rect.height / 2;
+                itemDiv.style.borderTop = insertAfter ? '' : '2px solid var(--s-color-primary, #FFA3B1)';
+                itemDiv.style.borderBottom = insertAfter ? '2px solid var(--s-color-primary, #FFA3B1)' : '';
             }
         });
         
         itemDiv.addEventListener('dragleave', (e) => {
             itemDiv.style.borderTop = '';
+            itemDiv.style.borderBottom = '';
         });
         
         itemDiv.addEventListener('drop', (e) => {
             e.preventDefault();
             itemDiv.style.borderTop = '';
+            itemDiv.style.borderBottom = '';
             if (!draggedSubject || draggedSubject.id === subject.id) return;
+
+            const beforePositions = captureSubjectManagePositions(container);
             
             const draggedIndex = appState.findIndex(s => s.id === draggedSubject.id);
             const targetIndex = appState.findIndex(s => s.id === subject.id);
             
             if (draggedIndex !== -1 && targetIndex !== -1) {
-                const temp = appState[draggedIndex];
-                appState[draggedIndex] = appState[targetIndex];
-                appState[targetIndex] = temp;
+                // 插入式排序（更符合“排序”直觉）
+                let toIndex = targetIndex;
+                const rect = itemDiv.getBoundingClientRect();
+                const insertAfter = e.clientY > rect.top + rect.height / 2;
+                if (insertAfter) toIndex += 1;
+                if (draggedIndex < toIndex) toIndex -= 1;
+                toIndex = clamp(toIndex, 0, appState.length - 1);
+                moveSubjectInState(draggedIndex, toIndex);
                 saveState();
+                renderUI();
+                subjectManagePrevPositions = beforePositions;
                 renderSubjectManageDialog();
             }
         });
+
+        // 触屏拖拽排序（手柄）
+        const handleEl = itemDiv.querySelector('.subject-drag-handle');
+        attachPointerSort(handleEl, itemDiv);
         
         container.appendChild(itemDiv);
         
@@ -264,18 +550,61 @@ async function renderSubjectManageDialog() {
         const deleteBtn = itemDiv.querySelector(`#delete-${subject.id}`);
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => {
-                const deleteIndex = appState.findIndex(s => s.id === subject.id);
-                if (deleteIndex !== -1) {
-                    appState.splice(deleteIndex, 1);
-                    saveState();
-                    renderUI();
-                    renderSubjectManageDialog();
+                const container = document.getElementById('subject-list-container');
+                const beforePositions = captureSubjectManagePositions(container);
+
+                // 先动画，再真正删除
+                const row = deleteBtn.closest?.('.subject-manage-item') || itemDiv;
+                const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+                const doRemove = () => {
+                    const deleteIndex = appState.findIndex(s => s.id === subject.id);
+                    if (deleteIndex !== -1) {
+                        appState.splice(deleteIndex, 1);
+                        saveState();
+                        renderUI();
+                        subjectManagePrevPositions = beforePositions;
+                        renderSubjectManageDialog();
+                    }
+                };
+
+                if (prefersReduced) {
+                    doRemove();
+                    return;
                 }
+
+                const h = row.getBoundingClientRect().height;
+                row.style.height = `${h}px`;
+                row.style.overflow = 'hidden';
+                row.style.transition = 'opacity 180ms ease, transform 180ms ease, height 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms cubic-bezier(0.2, 0, 0, 1), padding 220ms cubic-bezier(0.2, 0, 0, 1)';
+
+                requestAnimationFrame(() => {
+                    row.style.opacity = '0';
+                    row.style.transform = 'scale(0.98)';
+                    row.style.height = '0px';
+                    row.style.marginTop = '0px';
+                    row.style.marginBottom = '0px';
+                    row.style.paddingTop = '0px';
+                    row.style.paddingBottom = '0px';
+                });
+
+                const timer = setTimeout(doRemove, 240);
+                row.addEventListener(
+                    'transitionend',
+                    () => {
+                        clearTimeout(timer);
+                        doRemove();
+                    },
+                    { once: true },
+                );
             });
         }
     });
     
     await replaceIconMasks(container);
+
+    // 排序/删除后平滑位移过渡
+    animateSubjectManageFromPositions(container, subjectManagePrevPositions);
+    subjectManagePrevPositions = captureSubjectManagePositions(container);
 }
 
 async function openSubjectManageDialog() {
@@ -603,8 +932,29 @@ setInterval(updateClock, 1000);
 updateClock();
 
 window.resetContent = function() {
-  localStorage.removeItem('kanban_data');
-    location.reload();
+    // 保留科目配置（名称/图标/排序/隐藏状态等），仅清空内容
+    if (!Array.isArray(appState) || appState.length === 0) {
+        try {
+            const saved = localStorage.getItem('kanban_data');
+            const parsed = saved ? JSON.parse(saved) : null;
+            if (Array.isArray(parsed)) {
+                appState.length = 0;
+                appState.push(...parsed);
+            }
+        } catch {
+            // ignore
+        }
+    }
+    if (Array.isArray(appState)) {
+        appState.forEach(s => {
+            s.content = '';
+        });
+        saveState();
+        renderUI();
+    }
+
+    const dialog = document.getElementById('reset-content-dialog');
+    if (dialog) dialog.showed = false;
 };
 
 window.resetPic = function() {
@@ -683,17 +1033,12 @@ window.resetPic = function() {
                 return;
             }
             
-            if (!icon) {
-                alert('请选择科目图标');
-                return;
-            }
-            
             const newId = 'subject_' + Date.now();
             appState.push({
                 id: newId,
                 name: name,
-                icon: icon,
-                content: ' ',
+                icon: icon || '',
+                content: '',
                 isDeleted: false
             });
             

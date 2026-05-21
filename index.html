@@ -434,10 +434,10 @@
 
             <s-dialog id="reset-content-dialog">
                 <div slot="headline"> 提示 </div>
-                <div slot="text">将会重置所有科目至默认状态。是否继续？
+                <div slot="text">将会清空所有科目的作业内容，并保留科目配置（名称/图标/排序/隐藏状态等）。是否继续？
                 </div>
                 <s-button slot="action" type="text">取消</s-button>
-                <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetContent(); setTimeout(location.reload.bind(location), 1000);">确定</s-button>
+                <s-button slot="action" type="text" style="color:#FF0000;" onclick="resetContent();">确定</s-button>
             </s-dialog>
 
         <!-- 科目管理对话框 -->
