@@ -478,25 +478,6 @@
             <s-button slot="action" type="text" id="add-subject-confirm">确定</s-button>
         </s-dialog>
 
-        <script>
-            (async function getVersion() {
-                try {
-                    const response = await fetch('/version.txt');
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    const version = await response.text();
-                    if (version.startsWith("<!DOCTYPE")) {
-                        throw new Error('No Version Found')
-                    }
-                    document.getElementById("version-info").innerText = version;
-                    console.log(`Version: ${version}`);
-                } catch (err) {
-                    document.getElementById("version-info").innerText = '';
-                    console.error('Failed to fetch version file:', err);
-                }
-            })();
-        </script>
         <script type="module" src="./src/main.js"></script>
     </s-page>
 </body>

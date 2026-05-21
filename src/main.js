@@ -4,6 +4,61 @@ import html2canvas from 'html2canvas';
 import 'sober';
 import { createScheme } from 'sober-theme';
 import { createRichTextEditor } from './richTextEditor';
+import changelogText from '../CHANGELOG.txt?raw';
+
+// ==================== Dialog 工具（sober <s-dialog> 封装） ====================
+const Dialog = {
+    /**
+     * @param {{ headline?: string, text?: string, actions?: Array<{text: string, click?: () => (void|Promise<void>)}>} } opts
+     */
+    builder(opts = {}) {
+        const headline = String(opts.headline ?? '');
+        const text = String(opts.text ?? '');
+        const actions = Array.isArray(opts.actions) && opts.actions.length > 0
+            ? opts.actions
+            : [{ text: '确定' }];
+
+        const dialog = document.createElement('s-dialog');
+        const headlineDiv = document.createElement('div');
+        headlineDiv.slot = 'headline';
+        headlineDiv.textContent = headline;
+
+        const textDiv = document.createElement('div');
+        textDiv.slot = 'text';
+        textDiv.textContent = text;
+        // 让 changelog 这类多行文本更易读；短文本也不会受影响
+        textDiv.style.whiteSpace = 'pre-wrap';
+        textDiv.style.wordBreak = 'break-word';
+        dialog.appendChild(headlineDiv);
+        dialog.appendChild(textDiv);
+
+        actions.forEach((a) => {
+            const btn = document.createElement('s-button');
+            btn.slot = 'action';
+            btn.type = 'text';
+            btn.textContent = String(a?.text ?? '');
+            btn.addEventListener('click', async () => {
+                dialog.showed = false;
+                try {
+                    if (typeof a?.click === 'function') {
+                        await a.click();
+                    }
+                } finally {
+                    // 给关闭动画一点时间
+                    setTimeout(() => dialog.remove(), 180);
+                }
+            });
+            dialog.appendChild(btn);
+        });
+
+        document.body.appendChild(dialog);
+        // 下一帧再展示，避免初次挂载时闪烁
+        requestAnimationFrame(() => {
+            dialog.showed = true;
+        });
+        return dialog;
+    },
+};
 
 // ==================== IndexedDB存储 ====================
 const dbPromise = new Promise((resolve, reject) => {
@@ -139,6 +194,60 @@ function initData() {
         appState = JSON.parse(JSON.stringify(defaultSubjects));
     }
     return renderUI();
+}
+
+// ==================== 版本号 + 更新日志提示 ====================
+const APP_VERSION_STORAGE_KEY = 'materia_homework_last_version';
+const APP_USED_STORAGE_KEY = 'materia_homework_used';
+
+async function fetchCurrentVersion() {
+    try {
+        const response = await fetch('/version.txt', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const version = (await response.text()).trim();
+        if (!version || version.startsWith('<!DOCTYPE')) throw new Error('No Version Found');
+        return version;
+    } catch (err) {
+        console.error('Failed to fetch version file:', err);
+        return null;
+    }
+}
+
+function hasLocalUsageRecord() {
+    // “有使用记录”按最简单、最稳妥的判定：存在看板数据 / 主题缓存 / 显式 used 标记
+    return Boolean(
+        localStorage.getItem('kanban_data') ||
+        localStorage.getItem(PRIMARY_COLOR_CACHE_KEY) ||
+        localStorage.getItem(APP_USED_STORAGE_KEY) === '1',
+    );
+}
+
+async function maybeShowChangelogOnce() {
+    const version = await fetchCurrentVersion();
+    const versionInfoEl = document.getElementById('version-info');
+    if (versionInfoEl) versionInfoEl.innerText = version || '';
+    if (!version) return;
+
+    const usedBefore = hasLocalUsageRecord();
+    const prevVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+
+    // 先写入 used 标记：让首次使用不弹，后续版本变更可弹
+    localStorage.setItem(APP_USED_STORAGE_KEY, '1');
+
+    const versionChanged = Boolean(prevVersion) && prevVersion !== version;
+    if (usedBefore && versionChanged) {
+        const text = String(changelogText || '').trim();
+        if (text) {
+            Dialog.builder({
+                headline: '更新日志',
+                text,
+                actions: [{ text: '关闭' }],
+            });
+        }
+    }
+
+    // 无论是否弹窗，都更新本地记录，确保“每个版本最多弹一次”
+    localStorage.setItem(APP_VERSION_STORAGE_KEY, version);
 }
 
 async function renderUI() {
@@ -567,35 +676,47 @@ async function renderSubjectManageDialog() {
                     }
                 };
 
-                if (prefersReduced) {
-                    doRemove();
-                    return;
-                }
+                Dialog.builder({
+                    headline: '提示',
+                    text: '确认删除吗？',
+                    actions: [
+                        { text: '取消' },
+                        {
+                            text: '确定',
+                            click: async () => {
+                                if (prefersReduced) {
+                                    doRemove();
+                                    return;
+                                }
 
-                const h = row.getBoundingClientRect().height;
-                row.style.height = `${h}px`;
-                row.style.overflow = 'hidden';
-                row.style.transition = 'opacity 180ms ease, transform 180ms ease, height 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms cubic-bezier(0.2, 0, 0, 1), padding 220ms cubic-bezier(0.2, 0, 0, 1)';
+                                const h = row.getBoundingClientRect().height;
+                                row.style.height = `${h}px`;
+                                row.style.overflow = 'hidden';
+                                row.style.transition = 'opacity 180ms ease, transform 180ms ease, height 220ms cubic-bezier(0.2, 0, 0, 1), margin 220ms cubic-bezier(0.2, 0, 0, 1), padding 220ms cubic-bezier(0.2, 0, 0, 1)';
 
-                requestAnimationFrame(() => {
-                    row.style.opacity = '0';
-                    row.style.transform = 'scale(0.98)';
-                    row.style.height = '0px';
-                    row.style.marginTop = '0px';
-                    row.style.marginBottom = '0px';
-                    row.style.paddingTop = '0px';
-                    row.style.paddingBottom = '0px';
+                                requestAnimationFrame(() => {
+                                    row.style.opacity = '0';
+                                    row.style.transform = 'scale(0.98)';
+                                    row.style.height = '0px';
+                                    row.style.marginTop = '0px';
+                                    row.style.marginBottom = '0px';
+                                    row.style.paddingTop = '0px';
+                                    row.style.paddingBottom = '0px';
+                                });
+
+                                const timer = setTimeout(doRemove, 240);
+                                row.addEventListener(
+                                    'transitionend',
+                                    () => {
+                                        clearTimeout(timer);
+                                        doRemove();
+                                    },
+                                    { once: true },
+                                );
+                            },
+                        },
+                    ],
                 });
-
-                const timer = setTimeout(doRemove, 240);
-                row.addEventListener(
-                    'transitionend',
-                    () => {
-                        clearTimeout(timer);
-                        doRemove();
-                    },
-                    { once: true },
-                );
             });
         }
     });
@@ -984,6 +1105,9 @@ window.resetPic = function() {
     const modal = document.querySelector('.loading-modal');
     modal.classList.add('fade-out');
     modal.addEventListener('transitionend', () => modal.remove());
+
+    // 仅在“本地已有使用记录且版本号变化”时弹一次 changelog
+    await maybeShowChangelogOnce();
     
     // ==================== 科目管理事件监听 ====================
     // 打开科目管理对话框
