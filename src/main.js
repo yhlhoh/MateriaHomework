@@ -985,7 +985,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
         if (restorePanel) restorePanel.style.display = '';
         const imgData = canvas.toDataURL('image/png');
         const link = document.createElement('a');
-        link.download = 'MateriaHomework.png';
+        link.download = 'jmb_is_sb.png';
         link.href = imgData;
         link.click();
     } catch (err) {
