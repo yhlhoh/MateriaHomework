@@ -5,6 +5,7 @@ import 'sober';
 import { createScheme } from 'sober-theme';
 import { createRichTextEditor } from './richTextEditor';
 import changelogText from '../CHANGELOG.txt?raw';
+import { dayjs } from 'dayjs';
 
 // ==================== Dialog 工具（sober <s-dialog> 封装） ====================
 const Dialog = {
@@ -985,7 +986,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
         if (restorePanel) restorePanel.style.display = '';
         const imgData = canvas.toDataURL('image/png');
         const link = document.createElement('a');
-        link.download = 'MateriaHomework.png';
+        link.download = '作业_'+dayjs().format('YYYY-MM-DD_HHmmss')+'.png';
         link.href = imgData;
         link.click();
     } catch (err) {
