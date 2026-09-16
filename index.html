@@ -452,6 +452,25 @@
                     使用 iframe 网页
                 </s-popup-menu-item>
             </s-popup-menu>
+            <!-- 显示模式：浅色 / 深色 / 跟随系统 / 跟随取色 -->
+            <s-popup-menu>
+                <button id="theme-mode-btn" class="primary-btn" data-name="显示模式" slot="trigger">
+                    <span class="icon-mask" style="--icon-url: url('assets/theme.svg')" aria-hidden="true"></span>
+                    <s-ripple attached="true"></s-ripple>
+                </button>
+                <s-popup-menu-item id="theme-mode-color">
+                    <span class="theme-mode-label">跟随取色</span>
+                </s-popup-menu-item>
+                <s-popup-menu-item id="theme-mode-auto">
+                    <span class="theme-mode-label">跟随系统</span>
+                </s-popup-menu-item>
+                <s-popup-menu-item id="theme-mode-light">
+                    <span class="theme-mode-label">始终浅色</span>
+                </s-popup-menu-item>
+                <s-popup-menu-item id="theme-mode-dark">
+                    <span class="theme-mode-label">始终深色</span>
+                </s-popup-menu-item>
+            </s-popup-menu>
             <button id="img-add-btn" class="primary-btn" data-name="添加图片">
                 <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple>

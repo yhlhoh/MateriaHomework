@@ -82,6 +82,7 @@
   <div class="row">
     <button class="action" id="auto">暂停自动取色</button>
     <button class="action" id="toimage">从图片取色</button>
+    <button class="action" id="scheme">切换明暗</button>
     <button class="action" id="ready">重新握手 ready()</button>
   </div>
   <div class="status"><span class="dot" id="dot"></span><span id="status">等待宿主主题…</span></div>
@@ -151,14 +152,27 @@
     MateriaBackground.ready();
   };
 
+  // 让看板切换明暗（color=按取色，auto=跟随系统，light/dark=固定）
+  document.getElementById('scheme').onclick = function () {
+    var next = MateriaBackground.isDark() ? 'light' : 'dark';
+    if (!MateriaBackground.setScheme(next)) {
+      statusEl.textContent = '当前不在 iframe 中，无法请求切换';
+      return;
+    }
+    this.textContent = next === 'dark' ? '切到浅色' : '切到深色';
+  };
+
   MateriaBackground.onTheme(function (theme) {
     if (!theme || !theme.color) {
       statusEl.textContent = '已连接宿主，但宿主还没有主色';
       return;
     }
-    statusEl.textContent = '宿主当前主色 ' + theme.color;
+    var schemeText = theme.scheme === 'dark' ? '深色' : theme.scheme === 'light' ? '浅色' : '未知';
+    statusEl.textContent = '宿主主色 ' + theme.color + ' · ' + schemeText +
+      (theme.mode ? '（模式：' + theme.mode + '）' : '');
     dotEl.style.background = theme.color;
     document.documentElement.style.setProperty('--accent', theme.color);
+    document.getElementById('scheme').textContent = theme.scheme === 'dark' ? '切到浅色' : '切到深色';
   });
 
   // URL 参数优先：?color=%236750A4 固定一个颜色，?auto=0 关闭自动取色

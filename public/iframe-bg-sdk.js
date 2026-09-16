@@ -20,16 +20,22 @@
  *     const color = await MateriaBackground.pickColorFromImage('./wallpaper.jpg');
  *     MateriaBackground.repick(color);
  *
- *     // 4) 监听看板回传的当前主题色
- *     MateriaBackground.onTheme(({ color }) => { document.body.style.background = color; });
+ *     // 4) 监听看板回传的当前主题（含明暗）
+ *     MateriaBackground.onTheme(({ color, scheme }) => {
+ *       document.body.style.background = color;
+ *       document.body.classList.toggle('dark', scheme === 'dark');
+ *     });
  *
- *     // 5) 页面就绪后通知看板（看板会立即回发当前主题）
+ *     // 5) 请求看板切换显示模式（color=跟随取色 auto=跟随系统 light/dark=固定）
+ *     MateriaBackground.setScheme('color');
+ *
+ *     // 6) 页面就绪后通知看板（看板会立即回发当前主题）
  *     MateriaBackground.ready();
  *   </script>
  *
  * 协议：window.postMessage，channel = 'materia-homework-iframe-bg'
- *   子页 -> 宿主：color-repick / color-set / color-repick-image / ready
- *   宿主 -> 子页：theme  { color, seed }
+ *   子页 -> 宿主：color-repick / color-set / color-repick-image / set-scheme / ready
+ *   宿主 -> 子页：theme  { color, seed, scheme, mode }
  *                 color-pick-result  { requestId, ok, color?, error? }
  * 该文件为无构建依赖的普通脚本，可直接被任意静态页面引用。
  */
@@ -130,6 +136,8 @@
     lastTheme = {
       color: normalizeColor(data.color) || '',
       seed: normalizeColor(data.seed || data.color) || '',
+      scheme: data.scheme === 'dark' ? 'dark' : data.scheme === 'light' ? 'light' : '',
+      mode: typeof data.mode === 'string' ? data.mode : '',
     };
     themeListeners.slice().forEach(function (listener) {
       try {
@@ -308,6 +316,27 @@
           reject(new Error('图片取色请求发送失败'));
         }
       });
+    },
+
+    /**
+     * 请求看板切换显示模式。不会写回看板的本地偏好，刷新后回到用户自己的设置。
+     * @param {'color'|'auto'|'light'|'dark'} mode
+     *        color=跟随取色（按取到的主色明暗） auto=跟随系统 light/dark=固定
+     * @returns {boolean} 是否已发出请求
+     */
+    setScheme: function (mode) {
+      var allowed = ['color', 'auto', 'light', 'dark'];
+      if (allowed.indexOf(mode) === -1) {
+        console.warn('[MateriaBackground] setScheme 只接受 color/auto/light/dark：', mode);
+        return false;
+      }
+      return post('set-scheme', { mode: mode });
+    },
+
+    /** 看板当前是深色还是浅色；还没收到过主题时为 null */
+    isDark: function () {
+      if (!lastTheme || !lastTheme.scheme) return null;
+      return lastTheme.scheme === 'dark';
     },
 
     normalizeColor: normalizeColor,

@@ -5,7 +5,7 @@ import 'sober';
 // 本地打包 sober 的滚动条样式，避免离线时依赖 unpkg CDN
 import 'sober/style/scroll-view.css';
 import { createScheme } from 'sober-theme';
-import { hexFromArgb, sourceColorFromImage } from '@material/material-color-utilities';
+import { Hct, argbFromHex, hexFromArgb, sourceColorFromImage } from '@material/material-color-utilities';
 import { registerSW } from 'virtual:pwa-register';
 import { createRichTextEditor } from './richTextEditor';
 import changelogText from '../CHANGELOG.txt?raw';
@@ -856,6 +856,137 @@ async function applyMaterialYouTheme(source) {
     }
 }
 
+// ==================== 显示模式（浅色 / 深色 / 跟随系统 / 跟随取色） ====================
+// sober 的 createScheme 同时产出浅色 --s-color-* 与深色 --s-color-dark-* 两套变量，
+// s-page 的 theme 属性（light/auto/dark）会在 [dark] 下把前者重映射到后者，
+// 所以暗色不需要另建配色，同一颗取色种子即可。
+const THEME_MODE_STORAGE_KEY = 'materia_theme_mode';
+const THEME_MODES = ['color', 'auto', 'light', 'dark'];
+const THEME_MODE_LABELS = {
+    color: '跟随取色',
+    auto: '跟随系统',
+    light: '始终浅色',
+    dark: '始终深色',
+};
+// 种子色 HCT tone 低于该值就认为“取到的是深色”，跟随取色时切到深色模式。
+// tone 范围 0(黑)~100(白)。参考值：#1B1035=7.8、深蓝 #1B3A5C≈22、#6750A4=40.1、
+// 默认壁纸 default.png=87.1。想让更多颜色触发深色就调高这个数。
+const DARK_SOURCE_TONE = 40;
+const DEFAULT_THEME_MODE = 'color';
+
+let themeMode = DEFAULT_THEME_MODE;
+let lastSeedTone = null;
+
+function normalizeThemeMode(value) {
+    return THEME_MODES.includes(value) ? value : DEFAULT_THEME_MODE;
+}
+
+/**
+ * 解析主题来源的种子色，用于按取色决定明暗。
+ * 与 createScheme 内部对图片的处理一致（sourceColorFromImage -> themeFromSourceColor），
+ * 所以解析出来的 hex 可以直接当种子用，不会改变配色结果。
+ * @returns {Promise<{hex: string, tone: number}|null>}
+ */
+async function resolveSeed(source) {
+    try {
+        let argb = null;
+        if (typeof source === 'string' && source.startsWith('#')) {
+            argb = argbFromHex(source);
+        } else if (source instanceof HTMLImageElement) {
+            argb = await sourceColorFromImage(source);
+        } else if (source instanceof File) {
+            const url = URL.createObjectURL(source);
+            try {
+                const img = await loadImageElement(url);
+                argb = await sourceColorFromImage(img);
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        }
+        if (argb == null) return null;
+        return { hex: hexFromArgb(argb), tone: Hct.fromInt(argb).tone };
+    } catch (err) {
+        console.warn('解析种子色失败，沿用上一次判断:', err);
+        return null;
+    }
+}
+
+/** 当前模式对应的 s-page theme 值 */
+function resolvePageTheme() {
+    if (themeMode === 'auto') return 'auto'; // 交给 s-page 自己跟随系统
+    if (themeMode === 'light' || themeMode === 'dark') return themeMode;
+    // 跟随取色：按种子色明暗决定
+    if (lastSeedTone == null) return 'light';
+    return lastSeedTone < DARK_SOURCE_TONE ? 'dark' : 'light';
+}
+
+/** 当前实际是深色还是浅色 */
+function currentScheme() {
+    const page = ensureSPage();
+    return page.isDark ? 'dark' : 'light';
+}
+
+/**
+ * 把当前模式应用到 s-page。
+ * animated 且给出 trigger 时走 s-page 内置的 View Transitions 圆形揭示动画
+ * （浏览器不支持时它自己会降级为直接切换）。
+ */
+async function applySchemeMode({ animated = false, trigger = null } = {}) {
+    const page = ensureSPage();
+    const target = resolvePageTheme();
+    // s-page 的 toggle 在目标与当前相同时会返回一个永不 resolve 的 Promise，必须先挡掉
+    if (page.theme === target) return target;
+
+    if (animated && typeof page.toggle === 'function') {
+        await page.toggle(target, trigger || undefined);
+    } else {
+        page.theme = target;
+    }
+    return target;
+}
+
+/** 菜单里的对勾与按钮提示 */
+function syncThemeModeMenu() {
+    THEME_MODES.forEach((mode) => {
+        const item = document.getElementById(`theme-mode-${mode}`);
+        const label = item?.querySelector('.theme-mode-label');
+        if (!label) return;
+        const text = THEME_MODE_LABELS[mode];
+        label.textContent = mode === themeMode ? `✓ ${text}` : text;
+    });
+    const trigger = document.getElementById('theme-mode-btn');
+    if (trigger) trigger.dataset.name = `显示模式：${THEME_MODE_LABELS[themeMode]}`;
+}
+
+/**
+ * 纠正 s-page 残留的系统主题监听。
+ * sober 的 s-page 只在 theme='auto' 时挂 prefers-color-scheme 监听，切回 light/dark
+ * 时并不会摘掉它，于是系统主题一变就会把用户明确选的固定模式覆盖掉。
+ * 这里在收到它的 change 事件时把模式纠正回来。返回是否发生了纠正。
+ */
+function reconcileSchemeMode() {
+    if (themeMode === 'auto') return false; // auto 模式下这正是预期的跟随行为
+    const page = ensureSPage();
+    const expected = resolvePageTheme();
+    if (page.theme === expected) return false;
+    page.theme = expected;
+    return true;
+}
+
+/**
+ * 切换显示模式。
+ * @param {string} mode color / auto / light / dark
+ * @param {{trigger?: HTMLElement|null, persist?: boolean}} [options]
+ */
+async function setThemeMode(mode, { trigger = null, persist = true } = {}) {
+    themeMode = normalizeThemeMode(mode);
+    if (persist) localStorage.setItem(THEME_MODE_STORAGE_KEY, themeMode);
+    syncThemeModeMenu();
+    await applySchemeMode({ animated: Boolean(trigger), trigger });
+    syncThemeToIframeBackground();
+    return themeMode;
+}
+
 // ==================== 重新取色过渡 ====================
 const THEME_TRANSITION_CLASS = 'theme-transition';
 const THEME_TRANSITION_MS = 520;
@@ -869,9 +1000,17 @@ let themeTransitionTimer = null;
  * 首次加载不走这里（loading-modal 还盖着，动画没意义）。
  */
 async function applyThemeAnimated(source) {
+    // 先解析种子色：既能省掉再解一次图片，也用于“跟随取色”判断明暗
+    const seed = await resolveSeed(source);
+    if (seed) lastSeedTone = seed.tone;
+    const applySource = seed ? seed.hex : source;
+
     const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     if (prefersReduced) {
-        return applyMaterialYouTheme(source);
+        await applyMaterialYouTheme(applySource);
+        await applySchemeMode({ animated: false });
+        syncThemeToIframeBackground();
+        return;
     }
 
     const root = document.documentElement;
@@ -881,7 +1020,10 @@ async function applyThemeAnimated(source) {
 
     clearTimeout(themeTransitionTimer);
     try {
-        return await applyMaterialYouTheme(source);
+        await applyMaterialYouTheme(applySource);
+        // 明暗也要在过渡类还挂着的时候切，这样换配色和换明暗是同一次平滑过渡
+        await applySchemeMode({ animated: false });
+        syncThemeToIframeBackground();
     } finally {
         themeTransitionTimer = setTimeout(() => {
             root.classList.remove(THEME_TRANSITION_CLASS);
@@ -912,16 +1054,14 @@ async function loadImages() {
     
     // 2. 处理主题生成（优先使用缓存主色）
     const cachedColor = getCachedPrimaryColor();
-    if (cachedColor) {
-        // 有缓存主色，直接使用（避免重复取色）
-        await applyMaterialYouTheme(cachedColor);
-    } else if (bgFile) {
-        // 无缓存但有背景图片，从图片取色并自动缓存
-        await applyMaterialYouTheme(bgFile);
-    } else {
-        // 无缓存无图片，使用默认颜色并缓存
-        await applyMaterialYouTheme('#9C4F4F');
-    }
+    const initialSource = cachedColor || bgFile || '#9C4F4F';
+
+    // 首屏也要定好明暗（跟随取色模式下靠种子色的 tone 判断），
+    // 但不走圆形揭示动画：loading-modal 还盖着，而且这是首次绘制
+    const seed = await resolveSeed(initialSource);
+    if (seed) lastSeedTone = seed.tone;
+    await applyMaterialYouTheme(seed ? seed.hex : initialSource);
+    await applySchemeMode({ animated: false });
     
     // 3. 应用背景图片（必须在主题之后，避免覆盖样式）
     if (bgFile) {
@@ -1098,7 +1238,7 @@ function restoreIframeBackground() {
     return false;
 }
 
-/** 把当前主题主色广播给背景 iframe，便于背景页跟随配色 */
+/** 把当前主题主色与明暗广播给背景 iframe，便于背景页跟随配色 */
 function syncThemeToIframeBackground() {
     const frame = getIframeBgFrame();
     if (!frame || !frame.contentWindow) return;
@@ -1111,6 +1251,8 @@ function syncThemeToIframeBackground() {
                 type: 'theme',
                 color: color,
                 seed: color,
+                scheme: currentScheme(),
+                mode: themeMode,
             },
             '*',
         );
@@ -1136,7 +1278,6 @@ async function repickColor(seedColor) {
             await applyThemeAnimated(getCachedPrimaryColor() || '#9C4F4F');
         }
     }
-    syncThemeToIframeBackground();
     if (typeof window.recomputeScale === 'function') window.recomputeScale();
     return getPrimaryColorFromPage();
 }
@@ -1181,7 +1322,6 @@ async function repickFromImageSource(rawSrc) {
     const argb = await sourceColorFromImage(img);
     const color = hexFromArgb(argb);
     await applyThemeAnimated(color);
-    syncThemeToIframeBackground();
     if (typeof window.recomputeScale === 'function') window.recomputeScale();
     return color;
 }
@@ -1225,6 +1365,11 @@ window.addEventListener('message', async (event) => {
                     ok: false,
                     error: String(err?.message || err),
                 });
+            }
+        } else if (data.type === 'set-scheme') {
+            // 背景页可以请求切换显示模式（不写回本地偏好，刷新后回到用户自己的设置）
+            if (THEME_MODES.includes(data.mode)) {
+                await setThemeMode(data.mode, { persist: false });
             }
         } else if (data.type === 'ready') {
             syncThemeToIframeBackground();
@@ -1381,6 +1526,9 @@ window.resetPic = function() {
 
 (async () => {
 
+    // 先恢复用户上次选的显示模式，首屏就按它渲染，避免亮→暗闪一下
+    themeMode = normalizeThemeMode(localStorage.getItem(THEME_MODE_STORAGE_KEY));
+
     await initData();
     await loadImages();
     // 恢复 iframe 背景（主题已就绪，随后会广播给背景页）
@@ -1475,6 +1623,19 @@ window.resetPic = function() {
             if (dialog) dialog.showed = false;
         });
     }
+
+    // ==================== 显示模式事件监听 ====================
+    syncThemeModeMenu();
+    // s-page 只在 auto 下派发 change；固定模式下收到它说明是残留监听在覆盖，纠正回来
+    ensureSPage().addEventListener('change', reconcileSchemeMode);
+    THEME_MODES.forEach((mode) => {
+        const item = document.getElementById(`theme-mode-${mode}`);
+        if (!item) return;
+        item.addEventListener('click', () => {
+            // 用菜单项本身作为圆形揭示动画的起点
+            setThemeMode(mode, { trigger: item });
+        });
+    });
 
     // ==================== iframe 背景事件监听 ====================
     const iframeBgDialog = document.getElementById('iframe-bg-dialog');
