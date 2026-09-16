@@ -2,7 +2,11 @@
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
 import 'sober';
+// 本地打包 sober 的滚动条样式，避免离线时依赖 unpkg CDN
+import 'sober/style/scroll-view.css';
 import { createScheme } from 'sober-theme';
+import { hexFromArgb, sourceColorFromImage } from '@material/material-color-utilities';
+import { registerSW } from 'virtual:pwa-register';
 import { createRichTextEditor } from './richTextEditor';
 import changelogText from '../CHANGELOG.txt?raw';
 import dayjs from 'dayjs';
@@ -818,6 +822,7 @@ function ensureSPage() {
     return sPage;
 }
 
+// 把主题真正写到 s-page 的 inline style 上（createScheme 会整段替换 cssText）
 async function applyMaterialYouTheme(source) {
     const pageElement = ensureSPage();
     try {
@@ -848,6 +853,39 @@ async function applyMaterialYouTheme(source) {
         await createScheme('#9C4F4F', { page: pageElement });
         const defaultColor = getPrimaryColorFromPage();
         if (defaultColor) setCachedPrimaryColor(defaultColor);
+    }
+}
+
+// ==================== 重新取色过渡 ====================
+const THEME_TRANSITION_CLASS = 'theme-transition';
+const THEME_TRANSITION_MS = 520;
+let themeTransitionTimer = null;
+
+/**
+ * 重新取色时套一层过渡动画。
+ * createScheme 会一次性替换 s-page 的 inline style，所有 var(--s-color-*) 同时改变，
+ * 默认是瞬变。这里在换色前给 <html> 挂上 theme-transition（见 index.html 的同名规则），
+ * 换色完成、过渡走完后再摘掉，避免长期覆盖 hover、拖拽等自身过渡。
+ * 首次加载不走这里（loading-modal 还盖着，动画没意义）。
+ */
+async function applyThemeAnimated(source) {
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (prefersReduced) {
+        return applyMaterialYouTheme(source);
+    }
+
+    const root = document.documentElement;
+    root.classList.add(THEME_TRANSITION_CLASS);
+    // 强制一次样式计算，确保过渡规则在颜色改变之前已经生效
+    void root.offsetWidth;
+
+    clearTimeout(themeTransitionTimer);
+    try {
+        return await applyMaterialYouTheme(source);
+    } finally {
+        themeTransitionTimer = setTimeout(() => {
+            root.classList.remove(THEME_TRANSITION_CLASS);
+        }, THEME_TRANSITION_MS + 80);
     }
 }
 
@@ -896,7 +934,8 @@ async function loadImages() {
     savedCustomImages.forEach(imgData => createCustomImgElement(imgData.id, imgData.file));
 }
 
-document.getElementById('bg-change-btn').addEventListener('click', () => {
+// 「更换背景」菜单 -> 选择本地图片
+document.getElementById('bg-image-item').addEventListener('click', () => {
     const input = document.getElementById('bg-input');
     input.onchange = async (e) => {
         const file = e.target.files[0];
@@ -904,8 +943,8 @@ document.getElementById('bg-change-btn').addEventListener('click', () => {
             const url = URL.createObjectURL(file);
             applyBackgroundImage(url, true);
             await setDB('background_img', file);
-            // 重新从图片提取主色并自动缓存
-            await applyMaterialYouTheme(file);
+            // 重新从图片提取主色并自动缓存（带过渡）
+            await applyThemeAnimated(file);
         }
         input.value = '';
     };
@@ -947,6 +986,254 @@ function createCustomImgElement(id, file) {
     container.appendChild(ripple);
 }
 
+// ==================== iframe 背景 ====================
+// 允许把任意网页作为看板背景（background iframe），并提供消息 SDK：
+// 背景页引入 /iframe-bg-sdk.js 后调用 MateriaBackground.repick('#RRGGBB') 即可让看板重新取色。
+const IFRAME_BG_STORAGE_KEY = 'materia_iframe_bg';
+const IFRAME_BG_CHANNEL = 'materia-homework-iframe-bg';
+const IFRAME_BG_HOST_SOURCE = 'materia-homework-host';
+let currentIframeUrl = '';
+let iframeBgLayer = null;
+
+// 允许 http(s) 绝对地址、// 开头、/ 或 ./ 开头的站内路径；裸域名自动补 https://
+function normalizeIframeUrl(raw) {
+    const text = String(raw ?? '').trim();
+    if (!text) return '';
+    let candidate = text;
+    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(candidate);
+    if (!hasScheme && !candidate.startsWith('//')) {
+        const isPathLike = candidate.startsWith('/') || candidate.startsWith('./') || candidate.startsWith('../');
+        if (!isPathLike) candidate = `https://${candidate}`;
+    }
+    try {
+        const parsed = new URL(candidate, location.href);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return parsed.href;
+    } catch (err) {
+        return '';
+    }
+}
+
+function isValidHexColor(value) {
+    return typeof value === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim());
+}
+
+/** 把 '#abc' / '#aabbcc' / 'rgb(1,2,3)' 归一化成 '#rrggbb'，无法解析时返回 '' */
+function normalizeSeedColor(value) {
+    if (typeof value !== 'string') return '';
+    const text = value.trim();
+    if (!text) return '';
+    if (isValidHexColor(text)) {
+        if (text.length === 4) {
+            return `#${text[1]}${text[1]}${text[2]}${text[2]}${text[3]}${text[3]}`.toLowerCase();
+        }
+        return text.slice(0, 7).toLowerCase();
+    }
+    const match = text.match(/^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})/i);
+    if (!match) return '';
+    const toByte = (n) => Math.max(0, Math.min(255, parseInt(n, 10)));
+    return `#${[match[1], match[2], match[3]].map((n) => toByte(n).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function getIframeBgFrame() {
+    return iframeBgLayer ? iframeBgLayer.querySelector('iframe') : null;
+}
+
+function ensureIframeBgLayer() {
+    if (iframeBgLayer && iframeBgLayer.isConnected) return iframeBgLayer;
+
+    const layer = document.createElement('div');
+    layer.className = 'iframe-bg-layer';
+    layer.setAttribute('aria-hidden', 'true');
+
+    const frame = document.createElement('iframe');
+    frame.className = 'iframe-bg-frame';
+    frame.title = '动态背景';
+    frame.setAttribute('loading', 'eager');
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('allow', 'autoplay; fullscreen');
+    // 背景页运行在沙箱里；allow-same-origin 只为让同源背景页能正常读写自身资源
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-pointer-lock');
+    frame.addEventListener('load', () => syncThemeToIframeBackground());
+
+    layer.appendChild(frame);
+    const page = ensureSPage();
+    page.insertBefore(layer, page.firstChild);
+    iframeBgLayer = layer;
+    return layer;
+}
+
+/** 应用 iframe 背景；url 非法时返回 false */
+function applyIframeBackground(rawUrl, { persist = true } = {}) {
+    const url = normalizeIframeUrl(rawUrl);
+    if (!url) return false;
+
+    const layer = ensureIframeBgLayer();
+    const frame = getIframeBgFrame();
+    if (frame && frame.getAttribute('src') !== url) {
+        frame.setAttribute('src', url);
+    }
+    layer.hidden = false;
+    currentIframeUrl = url;
+    if (persist) localStorage.setItem(IFRAME_BG_STORAGE_KEY, url);
+    syncThemeToIframeBackground();
+    return true;
+}
+
+function clearIframeBackground({ persist = true } = {}) {
+    currentIframeUrl = '';
+    const frame = getIframeBgFrame();
+    if (frame) frame.removeAttribute('src');
+    if (iframeBgLayer) {
+        iframeBgLayer.remove();
+        iframeBgLayer = null;
+    }
+    if (persist) localStorage.removeItem(IFRAME_BG_STORAGE_KEY);
+}
+
+function restoreIframeBackground() {
+    const saved = localStorage.getItem(IFRAME_BG_STORAGE_KEY);
+    if (saved && applyIframeBackground(saved, { persist: false })) return true;
+    if (saved) localStorage.removeItem(IFRAME_BG_STORAGE_KEY);
+    return false;
+}
+
+/** 把当前主题主色广播给背景 iframe，便于背景页跟随配色 */
+function syncThemeToIframeBackground() {
+    const frame = getIframeBgFrame();
+    if (!frame || !frame.contentWindow) return;
+    const color = getPrimaryColorFromPage() || getCachedPrimaryColor() || '';
+    try {
+        frame.contentWindow.postMessage(
+            {
+                channel: IFRAME_BG_CHANNEL,
+                source: IFRAME_BG_HOST_SOURCE,
+                type: 'theme',
+                color: color,
+                seed: color,
+            },
+            '*',
+        );
+    } catch (err) {
+        console.warn('向 iframe 背景广播主题失败:', err);
+    }
+}
+
+/**
+ * 重新取色（color-repick）。
+ * 传入颜色时以该颜色为种子重建主题；未传时用看板自身背景图 / 缓存主色重新取色。
+ */
+async function repickColor(seedColor) {
+    const color = normalizeSeedColor(seedColor);
+
+    if (color) {
+        await applyThemeAnimated(color);
+    } else {
+        const bgFile = await getDB('background_img');
+        if (bgFile) {
+            await applyThemeAnimated(bgFile);
+        } else {
+            await applyThemeAnimated(getCachedPrimaryColor() || '#9C4F4F');
+        }
+    }
+    syncThemeToIframeBackground();
+    if (typeof window.recomputeScale === 'function') window.recomputeScale();
+    return getPrimaryColorFromPage();
+}
+
+// ---------- 直接给图片取色（供 iframe SDK 调用） ----------
+
+/** 校验并归一化图片地址：支持 http(s)、data:image、blob: 以及站内相对路径 */
+function normalizeImageSource(raw) {
+    if (raw == null) return '';
+    const text = String(raw).trim();
+    if (!text) return '';
+    if (/^data:image\//i.test(text)) return text;
+    if (/^blob:/i.test(text)) return text;
+    return normalizeIframeUrl(text);
+}
+
+function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        // 跨域图片需要 CORS 才能读取像素；不带 CORS 头时会加载失败，直接如实报错
+        let crossOrigin = false;
+        try {
+            crossOrigin = new URL(src, location.href).origin !== location.origin;
+        } catch {
+            crossOrigin = false;
+        }
+        if (crossOrigin) img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(crossOrigin ? '图片加载失败（跨域图片需要允许 CORS）' : '图片加载失败'));
+        img.src = src;
+    });
+}
+
+/**
+ * 用图片本身取色并应用主题。
+ * @returns {Promise<string>} 取到的 '#rrggbb'
+ */
+async function repickFromImageSource(rawSrc) {
+    const src = normalizeImageSource(rawSrc);
+    if (!src) throw new Error('图片地址无效');
+    const img = await loadImageElement(src);
+    const argb = await sourceColorFromImage(img);
+    const color = hexFromArgb(argb);
+    await applyThemeAnimated(color);
+    syncThemeToIframeBackground();
+    if (typeof window.recomputeScale === 'function') window.recomputeScale();
+    return color;
+}
+
+/** 向背景 iframe 回发消息 */
+function replyToIframeBackground(payload) {
+    const frame = getIframeBgFrame();
+    if (!frame || !frame.contentWindow) return;
+    try {
+        frame.contentWindow.postMessage(
+            { channel: IFRAME_BG_CHANNEL, source: IFRAME_BG_HOST_SOURCE, ...payload },
+            '*',
+        );
+    } catch (err) {
+        console.warn('向 iframe 背景回发消息失败:', err);
+    }
+}
+
+window.addEventListener('message', async (event) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object' || data.channel !== IFRAME_BG_CHANNEL) return;
+    if (data.source === IFRAME_BG_HOST_SOURCE) return;
+
+    // 只接受当前背景 iframe 发来的消息，避免其它 iframe 误触发
+    const frame = getIframeBgFrame();
+    if (frame && frame.contentWindow && event.source && event.source !== frame.contentWindow) return;
+
+    try {
+        if (data.type === 'color-repick') {
+            await repickColor(data.color);
+        } else if (data.type === 'color-set') {
+            if (isValidHexColor(data.color)) await repickColor(data.color.trim());
+        } else if (data.type === 'color-repick-image') {
+            try {
+                const color = await repickFromImageSource(data.src);
+                replyToIframeBackground({ type: 'color-pick-result', requestId: data.requestId, ok: true, color });
+            } catch (err) {
+                replyToIframeBackground({
+                    type: 'color-pick-result',
+                    requestId: data.requestId,
+                    ok: false,
+                    error: String(err?.message || err),
+                });
+            }
+        } else if (data.type === 'ready') {
+            syncThemeToIframeBackground();
+        }
+    } catch (err) {
+        console.warn('处理 iframe 背景消息失败:', err);
+    }
+});
+
 // ==================== 时钟 ====================
 function updateClock() {
     const now = new Date();
@@ -974,6 +1261,8 @@ document.getElementById('save-btn').addEventListener('click', async () => {
         const restorePanel = document.getElementById('restore-panel');
         if (controls) controls.style.display = 'none';
         if (restorePanel) restorePanel.style.display = 'none';
+        // html2canvas 无法绘制 iframe 内容，导出时先隐藏背景层
+        document.body.classList.add('capturing');
         const restoreTransitions = disableTransitionsTemp();
         await new Promise(resolve => setTimeout(resolve, 300));
         const canvas = await html2canvas(document.body, {
@@ -991,6 +1280,14 @@ document.getElementById('save-btn').addEventListener('click', async () => {
         link.click();
     } catch (err) {
         console.error('截图失败:', err);
+    } finally {
+        document.body.classList.remove('capturing');
+        const controls = document.querySelector('.controls');
+        const restorePanel = document.getElementById('restore-panel');
+        if (controls) controls.style.display = '';
+        if (restorePanel) restorePanel.style.display = '';
+        const tempStyle = document.getElementById('temp-disable-transitions');
+        if (tempStyle) tempStyle.remove();
     }
 });
 
@@ -1040,14 +1337,10 @@ function scheduleScale() {
 
 window.recomputeScale = recomputeScale;
 
-// ==================== Service Worker ====================
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('Service Worker 注册成功:', registration.scope))
-            .catch(error => console.log('Service Worker 注册失败:', error));
-    });
-}
+// ==================== Service Worker（PWA 离线支持） ====================
+// 使用 vite-plugin-pwa 提供的注册器：生产环境注册 precache + 离线导航回退的 SW，
+// 开发环境注册 dev-sw，避免手动写死 /sw.js 在 dev 下 404。
+registerSW({ immediate: true });
 
 // ==================== 初始化 ====================
 setInterval(updateClock, 1000);
@@ -1082,6 +1375,7 @@ window.resetContent = function() {
 window.resetPic = function() {
     indexedDB.deleteDatabase('KanbanDB');
     localStorage.removeItem(PRIMARY_COLOR_CACHE_KEY);  // 同时清除主色缓存
+    localStorage.removeItem(IFRAME_BG_STORAGE_KEY);    // 同时清除 iframe 背景
     location.reload();
 };
 
@@ -1089,6 +1383,8 @@ window.resetPic = function() {
 
     await initData();
     await loadImages();
+    // 恢复 iframe 背景（主题已就绪，随后会广播给背景页）
+    restoreIframeBackground();
     await replaceIconMasks(document.querySelector('.controls'));
     
     scalePanel = document.querySelector(".right-panel");
@@ -1179,7 +1475,67 @@ window.resetPic = function() {
             if (dialog) dialog.showed = false;
         });
     }
-        initRichEditorDialog();
+
+    // ==================== iframe 背景事件监听 ====================
+    const iframeBgDialog = document.getElementById('iframe-bg-dialog');
+    const iframeBgUrlInput = document.getElementById('iframe-bg-url');
+
+    // 「更换背景」菜单 -> 使用 iframe 网页
+    const iframeBgBtn = document.getElementById('bg-iframe-item');
+    if (iframeBgBtn) {
+        iframeBgBtn.addEventListener('click', () => {
+            if (!iframeBgDialog) return;
+            if (iframeBgUrlInput) iframeBgUrlInput.value = currentIframeUrl || '';
+            iframeBgDialog.showed = true;
+        });
+    }
+
+    const iframeBgCancel = document.getElementById('iframe-bg-cancel');
+    if (iframeBgCancel) {
+        iframeBgCancel.addEventListener('click', () => {
+            if (iframeBgDialog) iframeBgDialog.showed = false;
+        });
+    }
+
+    const iframeBgClear = document.getElementById('iframe-bg-clear');
+    if (iframeBgClear) {
+        iframeBgClear.addEventListener('click', () => {
+            clearIframeBackground();
+            if (iframeBgUrlInput) iframeBgUrlInput.value = '';
+            if (iframeBgDialog) iframeBgDialog.showed = false;
+        });
+    }
+
+    const iframeBgConfirm = document.getElementById('iframe-bg-confirm');
+    if (iframeBgConfirm) {
+        iframeBgConfirm.addEventListener('click', () => {
+            const raw = iframeBgUrlInput?.value?.trim() || '';
+            if (!raw) {
+                clearIframeBackground();
+                if (iframeBgDialog) iframeBgDialog.showed = false;
+                return;
+            }
+            if (!applyIframeBackground(raw)) {
+                Dialog.builder({
+                    headline: '提示',
+                    text: '无法识别这个地址，请填写 https:// 开头的网址，或以 / 、./ 开头的站内路径。',
+                    actions: [{ text: '知道了' }],
+                });
+                return;
+            }
+            if (iframeBgDialog) iframeBgDialog.showed = false;
+        });
+    }
+
+    // 弹窗里一键填入内置示例页
+    const iframeBgDemo = document.getElementById('iframe-bg-demo');
+    if (iframeBgDemo) {
+        iframeBgDemo.addEventListener('click', () => {
+            if (iframeBgUrlInput) iframeBgUrlInput.value = './iframe-bg-demo.html';
+        });
+    }
+
+    initRichEditorDialog();
 })();
 
 document.getElementById('full-screen-btn').addEventListener('click', () => {

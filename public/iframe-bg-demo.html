@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iframe 背景示例 · 作业看板</title>
+<style>
+  :root { color-scheme: dark; --accent: #6750A4; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: 'Google Sans', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+    color: #fff;
+    background: linear-gradient(135deg, #1b1035 0%, #3a1c53 45%, #0f3b53 100%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+  .aurora {
+    position: fixed;
+    inset: -20%;
+    background:
+      radial-gradient(closest-side at 20% 30%, var(--accent) 0%, transparent 70%),
+      radial-gradient(closest-side at 80% 70%, #3DD6D0 0%, transparent 70%);
+    opacity: 0.55;
+    filter: blur(30px);
+    animation: drift 18s ease-in-out infinite alternate;
+    pointer-events: none;
+    transition: background 0.8s ease;
+  }
+  @keyframes drift {
+    from { transform: translate3d(-3%, -2%, 0) scale(1); }
+    to { transform: translate3d(3%, 2%, 0) scale(1.08); }
+  }
+  .panel {
+    position: relative;
+    margin: 28px;
+    padding: 18px 20px;
+    max-width: min(600px, calc(100vw - 56px));
+    border-radius: 22px;
+    background: rgba(12, 10, 24, 0.45);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  }
+  h1 { font-size: 1.05rem; margin: 0 0 6px; font-weight: 600; }
+  p { margin: 0 0 12px; font-size: 0.8rem; line-height: 1.65; opacity: 0.8; }
+  code { font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 0.74rem; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  button.swatch {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer; padding: 0;
+    transition: transform 0.15s ease;
+  }
+  button.swatch:hover { transform: scale(1.12); }
+  button.action {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff; border-radius: 999px;
+    padding: 7px 14px; font-size: 0.78rem; cursor: pointer;
+  }
+  button.action:hover { background: rgba(255, 255, 255, 0.22); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .status { font-size: 0.72rem; opacity: 0.72; margin-top: 12px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #7f7f7f; margin-right: 6px; vertical-align: middle; }
+  .note { margin-top: 12px; font-size: 0.72rem; line-height: 1.6; opacity: 0.62; }
+</style>
+</head>
+<body>
+<div class="aurora"></div>
+<div class="panel">
+  <h1>iframe 背景示例</h1>
+  <p>
+    这是被看板当作背景加载的页面。它按固定节奏调用
+    <code>MateriaBackground.repick('#RRGGBB')</code>，让看板跟着背景一起重新取色；
+    看板回传的主题色又通过 <code>onTheme</code> 同步回本页。<br>
+    在看板的「iframe 背景」里填 <code>./iframe-bg-demo.html</code> 即可加载本页。
+  </p>
+  <div class="swatches" id="swatches"></div>
+  <div class="row">
+    <button class="action" id="auto">暂停自动取色</button>
+    <button class="action" id="toimage">从图片取色</button>
+    <button class="action" id="ready">重新握手 ready()</button>
+  </div>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">等待宿主主题…</span></div>
+  <div class="note">
+    提示：作为看板背景时该层不接收鼠标事件，所以下面的色块只在本页被单独打开时可点击；
+    自动取色、URL 参数（<code>?color=%236750A4</code>）等程序化调用才是背景场景下的主要用法。
+  </div>
+</div>
+
+<script src="./iframe-bg-sdk.js"></script>
+<script>
+  var COLORS = ['#6750A4', '#B3261E', '#006D77', '#E8A33D', '#3F6AE0', '#8E4585'];
+  var swatches = document.getElementById('swatches');
+  var statusEl = document.getElementById('status');
+  var dotEl = document.getElementById('dot');
+  var autoBtn = document.getElementById('auto');
+  var autoTimer = null;
+  var autoIndex = 0;
+
+  COLORS.forEach(function (color) {
+    var btn = document.createElement('button');
+    btn.className = 'swatch';
+    btn.style.background = color;
+    btn.title = color + '（点击让看板按此颜色重新取色）';
+    btn.onclick = function () {
+      stopAuto();
+      MateriaBackground.repick(color);
+    };
+    swatches.appendChild(btn);
+  });
+
+  function startAuto() {
+    if (autoTimer) return;
+    autoBtn.textContent = '暂停自动取色';
+    autoTimer = setInterval(function () {
+      autoIndex = (autoIndex + 1) % COLORS.length;
+      MateriaBackground.repick(COLORS[autoIndex]);
+    }, 5000);
+  }
+
+  function stopAuto() {
+    if (!autoTimer) return;
+    clearInterval(autoTimer);
+    autoTimer = null;
+    autoBtn.textContent = '开始自动取色';
+  }
+
+  autoBtn.onclick = function () {
+    if (autoTimer) stopAuto();
+    else startAuto();
+  };
+
+  document.getElementById('toimage').onclick = function () {
+    stopAuto();
+    statusEl.textContent = '正在把 assets/default.png 交给看板取色…';
+    // 直接把图片交给宿主：由看板读像素、算主题色并重建主题
+    MateriaBackground.repickFromImage('./assets/default.png')
+      .then(function (result) {
+        statusEl.textContent = '看板从 assets/default.png 取到 ' + result.color;
+      })
+      .catch(function (err) {
+        statusEl.textContent = '宿主取色失败：' + err.message;
+      });
+  };
+
+  document.getElementById('ready').onclick = function () {
+    MateriaBackground.ready();
+  };
+
+  MateriaBackground.onTheme(function (theme) {
+    if (!theme || !theme.color) {
+      statusEl.textContent = '已连接宿主，但宿主还没有主色';
+      return;
+    }
+    statusEl.textContent = '宿主当前主色 ' + theme.color;
+    dotEl.style.background = theme.color;
+    document.documentElement.style.setProperty('--accent', theme.color);
+  });
+
+  // URL 参数优先：?color=%236750A4 固定一个颜色，?auto=0 关闭自动取色
+  var params = new URLSearchParams(location.search);
+  var fixed = MateriaBackground.normalizeColor(params.get('color') || '');
+  if (fixed) {
+    MateriaBackground.repick(fixed);
+  } else if (params.get('auto') !== '0') {
+    startAuto();
+    // 进入背景后立刻先取一次色，不必等第一个 5s 周期
+    MateriaBackground.repick(COLORS[0]);
+  } else {
+    autoBtn.textContent = '开始自动取色';
+  }
+
+  // 通知宿主：本背景页已就绪
+  MateriaBackground.ready();
+</script>
+</body>
+</html>

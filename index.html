@@ -4,9 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>作业看板</title>
-    <!-- Google Sans 字体 -->
+    <!-- Google Sans 字体（离线时由 Service Worker 缓存提供，缺失时回退到系统字体） -->
     <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/sober/style/scroll-view.css">
     <link rel="icon" href="./assets/favicon_512x.png" type="image/png">
     <style>
         root {
@@ -92,6 +91,8 @@
             height: 100vh;
             padding: 4vh 4vw;
             gap: 4vw;
+            position: relative;
+            z-index: 1; /* 保证看板内容位于 iframe 背景层之上 */
         }
 
         .left-panel {
@@ -282,6 +283,32 @@
             background-color: rgba(255, 0, 0, 0);
         }
 
+        /* ==================== iframe 背景层 ==================== */
+        .iframe-bg-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 0; /* 位于 body 背景图之上、看板内容之下 */
+            overflow: hidden;
+            pointer-events: none; /* 背景不拦截鼠标/触摸操作 */
+        }
+
+        .iframe-bg-layer[hidden] {
+            display: none;
+        }
+
+        .iframe-bg-frame {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: transparent;
+        }
+
+        /* 截图导出时隐藏 iframe（html2canvas 无法绘制跨域 iframe） */
+        body.capturing .iframe-bg-layer {
+            visibility: hidden;
+        }
+
         .grid {
             grid-template-columns: minmax(100px, auto) minmax(100px, auto);
         }
@@ -318,6 +345,84 @@
             box-shadow: none !important;
         }
 
+        /* ==================== 快捷文字徽章 ==================== */
+        .quick-text-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .quick-text-bar[hidden] {
+            display: none;
+        }
+
+        /* 覆盖 sober s-badge 默认的 8x8 小圆点，把它变成可点击的文字标签 */
+        .quick-text-bar > s-badge.quick-text-badge {
+            width: auto !important;
+            height: auto !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            background: var(--s-color-secondary-container, #E8DEF8) !important;
+            color: var(--s-color-on-secondary-container, #1D192B) !important;
+            font-size: 0.8125rem !important;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: filter 0.15s ease, transform 0.12s ease;
+        }
+
+        .quick-text-bar > s-badge.quick-text-badge:hover {
+            filter: brightness(0.94);
+        }
+
+        /* s-badge 内部文字部分（part="text"）：放大成更好点的标签尺寸 */
+        .quick-text-bar > s-badge.quick-text-badge::part(text) {
+            height: 24px !important;
+            padding: 0 10px !important;
+            border-radius: 12px !important;
+            font-size: 0.8125rem !important;
+            line-height: 1 !important;
+        }
+
+        .quick-text-bar > s-badge.quick-text-badge:active {
+            transform: scale(0.94);
+        }
+
+        .quick-text-bar > s-badge.quick-text-badge:focus-visible {
+            outline: 2px solid var(--s-color-primary, #9C4F4F);
+            outline-offset: 2px;
+        }
+
+        /* ==================== 重新取色过渡 ==================== */
+        /* theme-transition 只在切换主题的瞬间挂在 <html> 上，让所有用到主题色的元素
+           平滑过渡；过渡结束后立刻摘掉，避免长期覆盖 hover / 拖拽等自身过渡。
+           只列颜色相关属性，font-size / transform 不参与，避免版面跟着动。 */
+        html.theme-transition,
+        html.theme-transition *,
+        html.theme-transition *::before,
+        html.theme-transition *::after {
+            transition:
+                background-color 520ms cubic-bezier(0.2, 0, 0, 1),
+                color 520ms cubic-bezier(0.2, 0, 0, 1),
+                border-color 520ms cubic-bezier(0.2, 0, 0, 1),
+                outline-color 520ms cubic-bezier(0.2, 0, 0, 1),
+                fill 520ms cubic-bezier(0.2, 0, 0, 1),
+                stroke 520ms cubic-bezier(0.2, 0, 0, 1),
+                box-shadow 520ms cubic-bezier(0.2, 0, 0, 1),
+                text-shadow 520ms cubic-bezier(0.2, 0, 0, 1) !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html.theme-transition,
+            html.theme-transition *,
+            html.theme-transition *::before,
+            html.theme-transition *::after {
+                transition: none !important;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -332,10 +437,21 @@
         <input type="file" id="img-input" accept="image/*" multiple style="display:none">
 
         <div class="controls">
-            <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
-                <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
-                <s-ripple attached="true"></s-ripple>
-            </button>
+            <!-- 更换背景：弹出菜单选择「本地图片」或「iframe 网页」 -->
+            <s-popup-menu>
+                <button id="bg-change-btn" class="primary-btn" data-name="更换背景" slot="trigger">
+                    <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
+                    <s-ripple attached="true"></s-ripple>
+                </button>
+                <s-popup-menu-item id="bg-image-item">
+                    <s-icon slot="start" src="assets/image.svg"></s-icon>
+                    选择本地图片
+                </s-popup-menu-item>
+                <s-popup-menu-item id="bg-iframe-item">
+                    <s-icon slot="start" src="assets/iframe.svg"></s-icon>
+                    使用 iframe 网页
+                </s-popup-menu-item>
+            </s-popup-menu>
             <button id="img-add-btn" class="primary-btn" data-name="添加图片">
                 <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple>
@@ -422,6 +538,8 @@
                         <s-picker-item value="#616161">灰色</s-picker-item>
                     </s-picker>
                 </div>
+                <!-- 快捷文字徽章：点击后在光标处插入对应文字（列表见 src/richTextEditor.js 的 DEFAULT_QUICK_TEXTS） -->
+                <div class="quick-text-bar" id="quick-text-bar" role="toolbar" aria-label="快捷文字"></div>
                 <s-field style="height:250px; width:650px;">
                     <div slot="label">请输入内容</div>
                     <div id="rich-editor"></div>
@@ -475,6 +593,32 @@
             </div>
             <s-button slot="action" type="text" id="add-subject-cancel">取消</s-button>
             <s-button slot="action" type="text" id="add-subject-confirm">确定</s-button>
+        </s-dialog>
+
+        <!-- iframe 背景对话框 -->
+        <s-dialog id="iframe-bg-dialog">
+            <div slot="headline">iframe 背景</div>
+            <div slot="text" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                <div style="font-size: 0.875rem; line-height: 1.6; opacity: 0.85;">
+                    填写一个网页地址，它会作为看板背景显示（背景层不拦截鼠标操作）。<br>
+                    支持 <code>https://</code> 网址，也支持 <code>/</code>、<code>./</code> 开头的站内路径。
+                </div>
+                <s-text-field id="iframe-bg-url" label="iframe 地址" placeholder="https://example.com/bg.html"></s-text-field>
+                <div style="font-size: 0.8125rem; line-height: 1.6; opacity: 0.85;">
+                    背景页引入 <code>iframe-bg-sdk.js</code> 后，调用
+                    <code>MateriaBackground.repick('#6750A4')</code> 可按指定颜色取色，
+                    调用 <code>MateriaBackground.repickFromImage(图片)</code>
+                    则可把图片直接交给看板取色。
+                    <button
+                        type="button"
+                        id="iframe-bg-demo"
+                        style="border: none; background: none; padding: 0; font: inherit; color: var(--s-color-primary, #6750A4); text-decoration: underline; cursor: pointer;"
+                    >填入内置示例 ./iframe-bg-demo.html</button>
+                </div>
+            </div>
+            <s-button slot="action" type="text" id="iframe-bg-clear">清除</s-button>
+            <s-button slot="action" type="text" id="iframe-bg-cancel">取消</s-button>
+            <s-button slot="action" type="text" id="iframe-bg-confirm">应用</s-button>
         </s-dialog>
 
         <script type="module" src="./src/main.js"></script>

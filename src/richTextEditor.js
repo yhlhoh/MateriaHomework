@@ -14,6 +14,43 @@ const MAX_FONT_SIZE = 150;
 const FONT_SIZE_STEP = 4;
 const EDITOR_FOCUS_DELAY = 50;
 
+// ==================== 快捷文字标签 ====================
+// 富文本编辑器中的“快捷输入文字”列表：每一项都会渲染成一个可点击的徽章（s-badge），
+// 点击后会把对应文字插入到编辑器当前光标处。需要增删快捷文字时直接改这个数组即可，
+// 也可以在 createRichTextEditor({ quickTexts: [...] }) 时传入自定义列表覆盖它。
+export const DEFAULT_QUICK_TEXTS = [
+ '大本',
+ '小本',
+ '试卷',
+ '课本',
+ '限时训练',
+ 'P',
+ 'T',
+ '选择题',
+ '大题',
+ '背诵',
+ '收'
+];
+
+// 规范化快捷文字列表：去空白、去重、过滤空项，兼容 "文字" 与 { text, title } 两种写法
+function normalizeQuickTexts(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const item of list) {
+    const raw = typeof item === 'string' ? item : item?.text;
+    if (raw == null) continue;
+    const text = String(raw);
+    if (!text.trim() || seen.has(text)) continue;
+    seen.add(text);
+    result.push({
+      text,
+      title: typeof item === 'object' && item?.title ? String(item.title) : `在光标处插入「${text}」`,
+    });
+  }
+  return result;
+}
+
 function getSelectedFontSize(quill) {
   const range = quill.getSelection();
   if (!range || range.length <= 0) return DEFAULT_FONT_SIZE;
@@ -55,18 +92,74 @@ function getEditorHtml(quill) {
   return quill.root.innerHTML;
 }
 
+// 取当前光标/选区：编辑器仍聚焦时用实时选区，否则回退到 Quill 记录的最近一次选区
+function getCursorRange(quill) {
+  return quill.getSelection() || quill.getSelection(true);
+}
+
+// 把一段纯文字插入到编辑器当前光标处（若存在选区则替换选区内容）
+export function insertTextAtCursor(quill, text) {
+  const value = text == null ? '' : String(text);
+  if (!quill || !value) return false;
+
+  const range = getCursorRange(quill);
+  const index = range ? range.index : quill.getLength();
+  const length = range ? range.length : 0;
+
+  if (length > 0) {
+    quill.deleteText(index, length, 'user');
+  }
+  quill.insertText(index, value, 'user');
+  quill.setSelection(index + value.length, 0, 'user');
+  quill.focus();
+  return true;
+}
+
 export function createRichTextEditor({
   appState,
   getCurrentEditId,
   setCurrentEditId,
   saveState,
   renderUI,
+  quickTexts = DEFAULT_QUICK_TEXTS,
 }) {
   let editDialog = null;
   let quill = null;
   let originalHtml = '';
   let draftHtml = '';
   let draftSyncRafId = null;
+  const quickTextItems = normalizeQuickTexts(quickTexts);
+
+  // 渲染快捷文字徽章；点击徽章 -> 在光标处插入文字
+  function renderQuickTextBadges() {
+    const bar = document.getElementById('quick-text-bar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    bar.hidden = quickTextItems.length === 0;
+
+    quickTextItems.forEach(({ text, title }) => {
+      const badge = document.createElement('s-badge');
+      badge.className = 'quick-text-badge';
+      badge.textContent = text;
+      badge.title = title;
+      badge.dataset.text = text;
+      badge.setAttribute('role', 'button');
+      badge.setAttribute('tabindex', '0');
+      // 阻止默认行为，避免点击徽章时编辑器失焦、选区丢失
+      badge.addEventListener('mousedown', (e) => e.preventDefault());
+      badge.onclick = () => {
+        if (!quill) return;
+        insertTextAtCursor(quill, text);
+      };
+      badge.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        if (!quill) return;
+        insertTextAtCursor(quill, text);
+      });
+      bar.appendChild(badge);
+    });
+  }
 
   const closeEditorDialog = () => {
     if (!editDialog) return;
@@ -208,6 +301,7 @@ export function createRichTextEditor({
     });
 
     bindEditorButtons();
+    renderQuickTextBadges();
 
     const confirmBtn = document.getElementById('text-edit-confirm');
     const cancelBtn = document.getElementById('text-edit-cancel');

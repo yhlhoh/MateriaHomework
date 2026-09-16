@@ -1,4 +1,4 @@
-name: NodeJS with Webpack
+name: Build
 
 on:
   push:
@@ -12,7 +12,8 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x]
+        # Vite 7 要求 Node ^20.19.0 || >=22.12.0，18.x 无法构建
+        node-version: [20.x, 22.x]
 
     steps:
     - uses: actions/checkout@v4
@@ -21,8 +22,10 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
+        cache: npm
+
+    - name: Install dependencies
+      run: npm ci
 
     - name: Build
-      run: |
-        npm install
-        npx webpack
+      run: npm run build
