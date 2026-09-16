@@ -1042,6 +1042,11 @@ function compositeArgb(over, under, alpha) {
     return (0xff << 24) | (mix(16) << 16) | (mix(8) << 8) | mix(0);
 }
 
+/** 只影响本次运行：用于背景页自报的画面平均色，不写进 body 壁纸的记录 */
+function setEffectiveWallpaperArgb(argb) {
+    wallpaperArgb = argb;
+}
+
 function rememberWallpaperArgb(argb) {
     wallpaperArgb = argb;
     try {
@@ -1477,6 +1482,11 @@ async function repickColor(seedColor) {
     const color = normalizeSeedColor(seedColor);
 
     if (color) {
+        // 按 SDK 约定，背景页 repick 的颜色就是它自己画面的代表色（背景页自己做平均），
+        // 所以它同时也是"当前实际背景的平均色"。必须在这里同步：
+        // 界面实际压在 iframe 上，而 wallpaperArgb 记的是 body 壁纸（站内默认图，浅色），
+        // 不同步的话就会按浅色背景去挑时钟颜色，压在深色画面上根本看不见。
+        setEffectiveWallpaperArgb(argbFromHex(color));
         await applyThemeAnimated(color);
     } else {
         const bgFile = await getDB('background_img');
@@ -1530,6 +1540,8 @@ async function repickFromImageSource(rawSrc) {
     const img = await loadImageElement(src);
     const extracted = extractSeedArgb(img);
     if (!extracted) throw new Error('图片中没有可用的像素');
+    // 这张图就是背景页想用的壁纸，它的平均色同样代表实际背景明暗
+    setEffectiveWallpaperArgb(extracted.averageArgb);
     const color = hexFromArgb(extracted.argb);
     await applyThemeAnimated(color);
     if (typeof window.recomputeScale === 'function') window.recomputeScale();
