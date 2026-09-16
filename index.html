@@ -110,7 +110,8 @@
             flex-direction: column;
             align-items: center;
             font-weight: bold;
-            color: var(--s-color-primary, #FFA3B1); /* 主色 */
+            /* 直接压在壁纸上，用 JS 按实际背景算出来的颜色（见 syncWallpaperReadability） */
+            color: var(--on-wallpaper-color, var(--s-color-primary, #FFA3B1));
             line-height: 0.85;
             text-shadow: 2px 4px 12px rgba(0, 0, 0, 0.08);
         }
@@ -120,7 +121,7 @@
             font-size: 1.8vw;
             font-weight: bold;
             letter-spacing: 2px;
-            color: var(--s-color-primary, #FFA3B1); /* 与时钟主色保持一致 */
+            color: var(--on-wallpaper-color, var(--s-color-primary, #FFA3B1)); /* 与时钟同色 */
         }
 
         .right-panel {
@@ -286,20 +287,10 @@
             background-color: rgba(255, 0, 0, 0);
         }
 
-        /* 壁纸之上、内容之下的一层薄纱。
-           看板背景是用户壁纸，而 s-page 是透明的，深色方案会把前景色翻成浅色——
-           浅色文字压在浅色壁纸上比浅色模式还难认。实测（默认壁纸平均色 #e3def2、
-           深色方案时钟色 #c1c1ff）：
-             不铺薄纱      #e3def2  对比度 1.30:1  ❌ 基本看不见
-             0.62         #68656f  对比度 3.35:1  ⚠ 刚过大字阈值
-             0.68         #5c5963  对比度 4.03:1  ← 当前取值，壁纸仍可见 32%
-             0.72         #54525a  对比度 4.52:1  ✅ AA，但壁纸只剩 28%
-           压在看板上的文字（时钟 15vw、日期 1.8vw）都算大字号，3:1 即达标；
-           想让时钟也满足 AA 就把下面这个值调到 0.72。浅色方案完全不铺，保持原观感。 */
-        s-page[dark] .scrim {
-            opacity: 0.68;
-        }
-
+        /* 壁纸之上、内容之下的一层薄纱，深浅由 JS 按实际对比度决定（见
+           main.js 的 syncWallpaperReadability）：深色方案下、壁纸明显比方案背景亮时
+           才铺，壁纸本来就暗（深色压深色几乎看不出差别）或浅色方案下都不铺，
+           尽量不动用户壁纸。 */
         .scrim {
             position: fixed;
             inset: 0;

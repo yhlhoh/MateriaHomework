@@ -903,10 +903,11 @@ const SEED_IMAGE_MAX_SIZE = 256;
  * 实测构造像素数组 868ms + 量化 2337ms ≈ 3.2 秒，还要分配 32MB 的 ImageData
  * 和几十 MB 的 JS 数组；缩到 256px 后同一张图量化约 0.4 秒，主色与 tone 结论一致
  * （都是 #d9d7fa / tone 87，属浅色）。
- * @returns {{argb: number, averageTone: number}|null}
- *   argb 是取出的种子色；averageTone 是整张图平均色的 HCT tone（0 黑 ~ 100 白），
- *   用于“深色模式按图片自动切换”——种子色只是一颗高饱和主色，用它的明暗判断整图
- *   会误判（例如黑底 + 高饱和亮色）。
+ * @returns {{argb: number, averageArgb: number, averageTone: number}|null}
+ *   argb 是取出的种子色；averageArgb 是整张图的平均色，averageTone 是它的 HCT tone
+ *   （0 黑 ~ 100 白）。平均色用于两处：深色模式按图片自动切换的判断（种子色只是一颗
+ *   高饱和主色，用它的明暗判断整图会误判，例如黑底 + 高饱和亮色），以及算压在壁纸上的
+ *   文字该用什么颜色。
  */
 function extractSeedArgb(img) {
     const naturalW = img.naturalWidth || img.width;
@@ -948,7 +949,7 @@ function extractSeedArgb(img) {
 
     // 平均色只算一次 HCT，比逐像素算 tone 便宜得多，判断明暗足够
     const averageRgb = argbFromRgb(sumR / opaque, sumG / opaque, sumB / opaque);
-    return { argb: ranked[0], averageTone: Hct.fromInt(averageRgb).tone };
+    return { argb: ranked[0], averageArgb: averageRgb, averageTone: Hct.fromInt(averageRgb).tone };
 }
 
 /** 把 hex / <img> / File / 图片地址统一加载成 <img> */
@@ -987,11 +988,125 @@ async function resolveSeed(source) {
         if (!img) return null;
         const extracted = extractSeedArgb(img);
         if (!extracted) return null;
+        // 记住壁纸平均色：既供薄纱/壁纸文字色使用，也让下次启动不必重新解码壁纸
+        rememberWallpaperArgb(extracted.averageArgb);
         return { hex: hexFromArgb(extracted.argb), tone: extracted.averageTone };
     } catch (err) {
         console.warn('解析种子色失败，沿用上一次判断:', err);
         return null;
     }
+}
+
+// ==================== 壁纸可读性（薄纱 + 压在壁纸上的文字色） ====================
+// 时钟/日期直接压在用户壁纸上，而配色方案只保证“方案背景色上的前景色”对比度。
+// 两者不匹配时（深色方案 + 浅色壁纸，或反过来）要补救：
+//   1) 深色方案下、壁纸明显比方案背景亮时铺一层薄纱压暗，让深色模式真的看着是深色；
+//      壁纸本来就暗就不铺——深色压深色几乎看不出差别，没必要动用户壁纸
+//   2) 压在壁纸上的文字颜色按“实际背景”（壁纸 + 薄纱）现算，方案 primary 达不到
+//      大字号阈值就退到黑/白
+// 壁纸本来就配得上当前方案时两件事都不做。
+const WALLPAPER_TEXT_MIN_CONTRAST = 3; // 时钟 15vw、日期 1.8vw 都算大字号，AA 要求 3:1
+const DARK_SCRIM_OPACITY = 0.68;
+const DARK_SCRIM_TONE_GAP = 30; // 壁纸比方案背景亮这么多才值得压暗
+const WALLPAPER_ARGB_STORAGE_KEY = 'materia_wallpaper_argb';
+
+// 当前壁纸的平均色（ARGB）。取过一次就缓存，避免每次启动都重新解码整张壁纸
+let wallpaperArgb = null;
+
+function relativeLuminance(argb) {
+    const channel = (v) => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel((argb >> 16) & 0xff)
+        + 0.7152 * channel((argb >> 8) & 0xff)
+        + 0.0722 * channel(argb & 0xff);
+}
+
+/** WCAG 对比度 */
+function contrastRatio(a, b) {
+    const la = relativeLuminance(a);
+    const lb = relativeLuminance(b);
+    const hi = Math.max(la, lb);
+    const lo = Math.min(la, lb);
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+/** 把半透明的 over 压在不透明的 under 上 */
+function compositeArgb(over, under, alpha) {
+    const mix = (shift) => {
+        const o = (over >> shift) & 0xff;
+        const u = (under >> shift) & 0xff;
+        return Math.round(o * alpha + u * (1 - alpha));
+    };
+    return (0xff << 24) | (mix(16) << 16) | (mix(8) << 8) | mix(0);
+}
+
+function rememberWallpaperArgb(argb) {
+    wallpaperArgb = argb;
+    try {
+        localStorage.setItem(WALLPAPER_ARGB_STORAGE_KEY, String(argb));
+    } catch {
+        // 存不下就算了，下次启动重新取一次
+    }
+}
+
+function restoreWallpaperArgb() {
+    try {
+        const value = Number(localStorage.getItem(WALLPAPER_ARGB_STORAGE_KEY));
+        wallpaperArgb = Number.isFinite(value) && value !== 0 ? value : null;
+    } catch {
+        wallpaperArgb = null;
+    }
+}
+
+function forgetWallpaperArgb() {
+    wallpaperArgb = null;
+    try {
+        localStorage.removeItem(WALLPAPER_ARGB_STORAGE_KEY);
+    } catch {
+        // ignore
+    }
+}
+
+function readSchemeColor(name) {
+    const hex = normalizeSeedColor(getComputedStyle(ensureSPage()).getPropertyValue(name));
+    return hex ? argbFromHex(hex) : null;
+}
+
+/**
+ * 按当前方案与实际壁纸，决定薄纱厚度与压在壁纸上的文字颜色。
+ * 每次应用主题、切换显示模式之后都要调用。
+ * @returns {{scrimAlpha: number, textColor: string|null}}
+ */
+function syncWallpaperReadability() {
+    const schemeBg = readSchemeColor('--s-color-background');
+    const schemePrimary = readSchemeColor('--s-color-primary');
+
+    // 1) 薄纱：只在深色方案下压暗偏亮的壁纸
+    let scrimAlpha = 0;
+    if (currentScheme() === 'dark' && wallpaperArgb != null && schemeBg != null) {
+        const wallpaperTone = Hct.fromInt(wallpaperArgb).tone;
+        const schemeBgTone = Hct.fromInt(schemeBg).tone;
+        if (wallpaperTone > schemeBgTone + DARK_SCRIM_TONE_GAP) scrimAlpha = DARK_SCRIM_OPACITY;
+    }
+    const scrim = document.querySelector('.scrim');
+    if (scrim) scrim.style.opacity = String(scrimAlpha);
+
+    // 2) 压在壁纸上的文字：先用方案 primary，达不到阈值就按实际背景的明暗退到黑/白
+    const effectiveBg = wallpaperArgb != null && schemeBg != null
+        ? compositeArgb(schemeBg, wallpaperArgb, scrimAlpha)
+        : schemeBg;
+    let textColor = null;
+    if (schemePrimary != null && effectiveBg != null) {
+        textColor = contrastRatio(schemePrimary, effectiveBg) >= WALLPAPER_TEXT_MIN_CONTRAST
+            ? hexFromArgb(schemePrimary)
+            : (relativeLuminance(effectiveBg) < 0.5 ? '#ffffff' : '#000000');
+    }
+    if (textColor) {
+        document.documentElement.style.setProperty('--on-wallpaper-color', textColor);
+    }
+    return { scrimAlpha, textColor };
 }
 
 /** 当前模式对应的 s-page theme 值 */
@@ -1018,13 +1133,15 @@ async function applySchemeMode({ animated = false, trigger = null } = {}) {
     const page = ensureSPage();
     const target = resolvePageTheme();
     // s-page 的 toggle 在目标与当前相同时会返回一个永不 resolve 的 Promise，必须先挡掉
-    if (page.theme === target) return target;
-
-    if (animated && typeof page.toggle === 'function') {
-        await page.toggle(target, trigger || undefined);
-    } else {
-        page.theme = target;
+    if (page.theme !== target) {
+        if (animated && typeof page.toggle === 'function') {
+            await page.toggle(target, trigger || undefined);
+        } else {
+            page.theme = target;
+        }
     }
+    // 即使明暗没变，重新取色也会换掉整套配色，壁纸可读性同样要重算
+    syncWallpaperReadability();
     return target;
 }
 
@@ -1141,6 +1258,9 @@ async function loadImages() {
     const bgFile = await getDB('background_img');
     
     // 2. 处理主题生成（优先使用缓存主色，其次自定义背景图，最后默认壁纸）
+    //    壁纸平均色也先恢复：主题若来自缓存 hex 就不会再解码壁纸，
+    //    但薄纱与时钟颜色仍然需要知道壁纸的明暗
+    restoreWallpaperArgb();
     const cachedColor = getCachedPrimaryColor();
     const initialSource = cachedColor || bgFile || DEFAULT_WALLPAPER;
 
@@ -1618,6 +1738,7 @@ window.resetPic = function() {
     indexedDB.deleteDatabase('KanbanDB');
     localStorage.removeItem(PRIMARY_COLOR_CACHE_KEY);  // 同时清除主色缓存
     localStorage.removeItem(IFRAME_BG_STORAGE_KEY);    // 同时清除 iframe 背景
+    forgetWallpaperArgb();                            // 壁纸平均色也要清，下次按默认壁纸重新取
     location.reload();
 };
 
