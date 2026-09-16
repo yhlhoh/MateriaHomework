@@ -19,19 +19,27 @@
   }
   .aurora {
     position: fixed;
-    inset: -20%;
+    inset: 0;
     background:
       radial-gradient(closest-side at 20% 30%, var(--accent) 0%, transparent 70%),
       radial-gradient(closest-side at 80% 70%, #3DD6D0 0%, transparent 70%);
     opacity: 0.55;
-    filter: blur(30px);
-    animation: drift 18s ease-in-out infinite alternate;
+    /* 背景页会被铺满整个看板并合成在所有内容之下，这里的模糊半径直接决定每帧开销：
+       原来 inset:-20% + blur(30px) 在弱 GPU 上要不停重新栅格化整屏。
+       收小范围与半径，并用 will-change 让它自己成为一层、由合成器做位移，
+       模糊只栅格化一次，帧率明显更稳。 */
+    filter: blur(14px);
+    will-change: transform;
+    animation: drift 24s ease-in-out infinite alternate;
     pointer-events: none;
     transition: background 0.8s ease;
   }
   @keyframes drift {
-    from { transform: translate3d(-3%, -2%, 0) scale(1); }
-    to { transform: translate3d(3%, 2%, 0) scale(1.08); }
+    from { transform: translate3d(-2%, -1.5%, 0) scale(1.02); }
+    to { transform: translate3d(2%, 1.5%, 0) scale(1.08); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .aurora { animation: none; }
   }
   .panel {
     position: relative;

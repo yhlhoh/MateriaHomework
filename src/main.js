@@ -450,11 +450,20 @@ function attachPointerSort(handleEl, itemEl) {
             // ignore
         }
 
+        // 只记住当前高亮的那一项，避免每次 pointermove 都对所有列表项做一遍
+        // querySelectorAll + 写样式（拖拽时这是每帧都在跑的路径）
+        let indicatorEl = null;
         const clearIndicators = () => {
-            document.querySelectorAll('.subject-manage-item').forEach(el => {
-                el.style.borderTop = '';
-                el.style.borderBottom = '';
-            });
+            if (!indicatorEl) return;
+            indicatorEl.style.borderTop = '';
+            indicatorEl.style.borderBottom = '';
+            indicatorEl = null;
+        };
+        const setIndicator = (el, insertAfter) => {
+            clearIndicators();
+            el.style.borderTop = insertAfter ? '' : '2px solid var(--s-color-primary, #FFA3B1)';
+            el.style.borderBottom = insertAfter ? '2px solid var(--s-color-primary, #FFA3B1)' : '';
+            indicatorEl = el;
         };
 
         const onMove = (ev) => {
@@ -470,11 +479,12 @@ function attachPointerSort(handleEl, itemEl) {
             const overId = overEl.getAttribute('data-id');
             if (!overId) return;
 
-            clearIndicators();
             const rect = overEl.getBoundingClientRect();
             const insertAfter = ev.clientY > rect.top + rect.height / 2;
-            if (insertAfter) overEl.style.borderBottom = '2px solid var(--s-color-primary, #FFA3B1)';
-            else overEl.style.borderTop = '2px solid var(--s-color-primary, #FFA3B1)';
+            if (indicatorEl === overEl && lastOverId === overId && lastInsertAfter === insertAfter) {
+                return; // 状态没变就不要再动 DOM
+            }
+            setIndicator(overEl, insertAfter);
             lastOverId = overId;
             lastInsertAfter = insertAfter;
         };
@@ -1520,6 +1530,11 @@ document.getElementById('save-btn').addEventListener('click', async () => {
 let scaleRafId = 0;
 let scalePanel = null;
 
+const MIN_TASK_SCALE = 0.55;
+// 二分收敛精度。每次迭代都要 getBoundingClientRect() 强制一次同步布局，而 0.2%
+// 的缩放差肉眼完全看不出来，0.01（1%）在效果不变的前提下少两次强制重排。
+const SCALE_EPSILON = 0.01;
+
 function setScale(v) {
     document.documentElement.style.setProperty("--task-scale", String(v));
 }
@@ -1542,10 +1557,12 @@ function recomputeScale() {
     setScale(1);
     scalePanel.getBoundingClientRect();
     if (fits()) return;
-    let lo = 0.55;
+
+    // 二分找“装得下的最大缩放”。这里的迭代次数直接等于强制同步布局的次数，
+    // 在内容多、屏幕分辨率高、GPU 弱的设备上是掉帧来源，所以精度只取到 SCALE_EPSILON。
+    let lo = MIN_TASK_SCALE;
     let hi = 1;
-    const EPS = 0.002;
-    while (hi - lo > EPS) {
+    while (hi - lo > SCALE_EPSILON) {
         const mid = (lo + hi) / 2;
         setScale(mid);
         scalePanel.getBoundingClientRect();
