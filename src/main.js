@@ -1007,7 +1007,9 @@ async function resolveSeed(source) {
 // 壁纸本来就配得上当前方案时两件事都不做。
 const WALLPAPER_TEXT_MIN_CONTRAST = 3; // 时钟 15vw、日期 1.8vw 都算大字号，AA 要求 3:1
 const DARK_SCRIM_OPACITY = 0.68;
-const DARK_SCRIM_TONE_GAP = 30; // 壁纸比方案背景亮这么多才值得压暗
+const DARK_SCRIM_TONE_GAP = 40; // 壁纸比方案背景亮这么多才值得压暗
+                                 // 40 表示只有明显偏亮的壁纸才在深色方案下被压暗，
+                                 // 中等偏暗（tone 40 左右）保持原样不动用户壁纸
 const WALLPAPER_ARGB_STORAGE_KEY = 'materia_wallpaper_argb';
 
 // 当前壁纸的平均色（ARGB）。取过一次就缓存，避免每次启动都重新解码整张壁纸
@@ -1079,6 +1081,39 @@ function readSchemeColor(name) {
     return hex ? argbFromHex(hex) : null;
 }
 
+// 壁纸文字的两个候选色调：同一色相下的亮(tone 80)与暗(tone 40)。
+// 这两个值正好等同于 Material 深色/浅色方案里的 primary 色调，但现在不按方案选，
+// 而是按与实际背景的对比度选。
+const WALLPAPER_TEXT_TONES = [80, 40];
+
+/**
+ * 压在壁纸上的文字（时钟/日期）用什么颜色。
+ * 关键：像 Android 锁屏那样由**壁纸**决定，而不是跟着界面的浅色/深色方案翻。
+ * 否则同一张壁纸在两种模式下会拿到相反的颜色——背景根本没变，文字色却反了。
+ * 做法：取壁纸代表色的同一色相，给出亮/暗两个候选，按实际对比度挑第一个达标的；
+ * 都不行才退到纯白/纯黑。
+ * @param {number|null} effectiveBg 实际背景色（壁纸叠上薄纱之后）
+ * @returns {string|null} '#rrggbb'
+ */
+function resolveWallpaperTextColor(effectiveBg) {
+    if (effectiveBg == null) return null;
+
+    const candidates = [];
+    if (wallpaperArgb != null) {
+        const hct = Hct.fromInt(wallpaperArgb);
+        for (const tone of WALLPAPER_TEXT_TONES) {
+            candidates.push(hexFromArgb(Hct.from(hct.hue, hct.chroma, tone).toInt()));
+        }
+    }
+    // 兜底：按背景明暗取纯白/纯黑
+    candidates.push(relativeLuminance(effectiveBg) < 0.5 ? '#ffffff' : '#000000');
+
+    for (const hex of candidates) {
+        if (contrastRatio(argbFromHex(hex), effectiveBg) >= WALLPAPER_TEXT_MIN_CONTRAST) return hex;
+    }
+    return candidates[candidates.length - 1];
+}
+
 /**
  * 按当前方案与实际壁纸，决定薄纱厚度与压在壁纸上的文字颜色。
  * 每次应用主题、切换显示模式之后都要调用。
@@ -1086,7 +1121,6 @@ function readSchemeColor(name) {
  */
 function syncWallpaperReadability() {
     const schemeBg = readSchemeColor('--s-color-background');
-    const schemePrimary = readSchemeColor('--s-color-primary');
 
     // 1) 薄纱：只在深色方案下压暗偏亮的壁纸
     let scrimAlpha = 0;
@@ -1098,16 +1132,11 @@ function syncWallpaperReadability() {
     const scrim = document.querySelector('.scrim');
     if (scrim) scrim.style.opacity = String(scrimAlpha);
 
-    // 2) 压在壁纸上的文字：先用方案 primary，达不到阈值就按实际背景的明暗退到黑/白
+    // 2) 压在壁纸上的文字颜色：由壁纸决定，与当前是浅色还是深色方案无关
     const effectiveBg = wallpaperArgb != null && schemeBg != null
         ? compositeArgb(schemeBg, wallpaperArgb, scrimAlpha)
         : schemeBg;
-    let textColor = null;
-    if (schemePrimary != null && effectiveBg != null) {
-        textColor = contrastRatio(schemePrimary, effectiveBg) >= WALLPAPER_TEXT_MIN_CONTRAST
-            ? hexFromArgb(schemePrimary)
-            : (relativeLuminance(effectiveBg) < 0.5 ? '#ffffff' : '#000000');
-    }
+    const textColor = resolveWallpaperTextColor(effectiveBg);
     if (textColor) {
         document.documentElement.style.setProperty('--on-wallpaper-color', textColor);
     }
