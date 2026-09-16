@@ -5,7 +5,7 @@ import 'sober';
 // 本地打包 sober 的滚动条样式，避免离线时依赖 unpkg CDN
 import 'sober/style/scroll-view.css';
 import { createScheme } from 'sober-theme';
-import { Hct, argbFromHex, hexFromArgb, sourceColorFromImage } from '@material/material-color-utilities';
+import { Hct, QuantizerCelebi, Score, argbFromHex, argbFromRgb, hexFromArgb } from '@material/material-color-utilities';
 import { registerSW } from 'virtual:pwa-register';
 import { createRichTextEditor } from './richTextEditor';
 import changelogText from '../CHANGELOG.txt?raw';
@@ -868,9 +868,10 @@ const THEME_MODE_LABELS = {
     light: '始终浅色',
     dark: '始终深色',
 };
-// 种子色 HCT tone 低于该值就认为“取到的是深色”，跟随取色时切到深色模式。
-// tone 范围 0(黑)~100(白)。参考值：#1B1035=7.8、深蓝 #1B3A5C≈22、#6750A4=40.1、
-// 默认壁纸 default.png=87.1。想让更多颜色触发深色就调高这个数。
+// 判断明暗用的 tone 阈值（0=黑 100=白）。
+// 跟随取色模式下：来源是图片时比的是整张图的平均 tone，来源是颜色时比的是该颜色的 tone。
+// 参考值：#1B1035=7.8、深蓝 #1B3A5C≈22、#6750A4=40.1、默认壁纸 default.png 平均 tone≈89。
+// 想让更多图片/颜色触发深色就调高这个数。
 const DARK_SOURCE_TONE = 40;
 const DEFAULT_THEME_MODE = 'color';
 
@@ -881,30 +882,102 @@ function normalizeThemeMode(value) {
     return THEME_MODES.includes(value) ? value : DEFAULT_THEME_MODE;
 }
 
+// 取色前先把图缩到这个尺寸以内，见 extractSeedArgb 的说明
+const SEED_IMAGE_MAX_SIZE = 256;
+
 /**
- * 解析主题来源的种子色，用于按取色决定明暗。
- * 与 createScheme 内部对图片的处理一致（sourceColorFromImage -> themeFromSourceColor），
- * 所以解析出来的 hex 可以直接当种子用，不会改变配色结果。
+ * 从图片里取种子色，并算出这张图整体的明暗。
+ * 算法与 mc-utilities 的 sourceColorFromImage 一致（只用不透明像素 ->
+ * QuantizerCelebi -> Score），区别是先把图缩到 SEED_IMAGE_MAX_SIZE 以内。
+ * 原实现按全分辨率取像素：默认壁纸是 3840x2160，要处理 8.29M 个像素，
+ * 实测构造像素数组 868ms + 量化 2337ms ≈ 3.2 秒，还要分配 32MB 的 ImageData
+ * 和几十 MB 的 JS 数组；缩到 256px 后同一张图量化约 0.4 秒，主色与 tone 结论一致
+ * （都是 #d9d7fa / tone 87，属浅色）。
+ * @returns {{argb: number, averageTone: number}|null}
+ *   argb 是取出的种子色；averageTone 是整张图平均色的 HCT tone（0 黑 ~ 100 白），
+ *   用于“深色模式按图片自动切换”——种子色只是一颗高饱和主色，用它的明暗判断整图
+ *   会误判（例如黑底 + 高饱和亮色）。
+ */
+function extractSeedArgb(img) {
+    const naturalW = img.naturalWidth || img.width;
+    const naturalH = img.naturalHeight || img.height;
+    if (!naturalW || !naturalH) return null;
+
+    const scale = Math.min(1, SEED_IMAGE_MAX_SIZE / Math.max(naturalW, naturalH));
+    const width = Math.max(1, Math.round(naturalW * scale));
+    const height = Math.max(1, Math.round(naturalH * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('无法创建 canvas 上下文');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const data = ctx.getImageData(0, 0, width, height).data;
+    const pixels = [];
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let opaque = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] !== 255) continue; // 与原实现一致：只用完全不透明的像素
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        pixels.push(argbFromRgb(r, g, b));
+        sumR += r;
+        sumG += g;
+        sumB += b;
+        opaque += 1;
+    }
+    if (pixels.length === 0) return null;
+
+    const ranked = Score.score(QuantizerCelebi.quantize(pixels, 128));
+    if (!ranked.length) return null;
+
+    // 平均色只算一次 HCT，比逐像素算 tone 便宜得多，判断明暗足够
+    const averageRgb = argbFromRgb(sumR / opaque, sumG / opaque, sumB / opaque);
+    return { argb: ranked[0], averageTone: Hct.fromInt(averageRgb).tone };
+}
+
+/** 把 hex / <img> / File / 图片地址统一加载成 <img> */
+async function loadSourceImage(source) {
+    if (source instanceof HTMLImageElement) return source;
+    if (source instanceof File) {
+        const url = URL.createObjectURL(source);
+        try {
+            return await loadImageElement(url);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+    if (typeof source === 'string' && source) {
+        const src = normalizeImageSource(source);
+        if (src) return await loadImageElement(src);
+    }
+    return null;
+}
+
+/**
+ * 解析主题来源的种子色与“判断明暗用的 tone”。
+ * - 直接给颜色（hex）时，用该颜色自身的 tone
+ * - 给图片/图片地址时，用整张图平均色的 tone（见 extractSeedArgb），
+ *   这样深色模式才是“跟着图片走”，而不是被某颗高饱和主色带偏
+ * 取出的 hex 可以直接当种子交给 createScheme，不会改变配色结果。
  * @returns {Promise<{hex: string, tone: number}|null>}
  */
 async function resolveSeed(source) {
     try {
-        let argb = null;
         if (typeof source === 'string' && source.startsWith('#')) {
-            argb = argbFromHex(source);
-        } else if (source instanceof HTMLImageElement) {
-            argb = await sourceColorFromImage(source);
-        } else if (source instanceof File) {
-            const url = URL.createObjectURL(source);
-            try {
-                const img = await loadImageElement(url);
-                argb = await sourceColorFromImage(img);
-            } finally {
-                URL.revokeObjectURL(url);
-            }
+            const argb = argbFromHex(source);
+            return { hex: hexFromArgb(argb), tone: Hct.fromInt(argb).tone };
         }
-        if (argb == null) return null;
-        return { hex: hexFromArgb(argb), tone: Hct.fromInt(argb).tone };
+        const img = await loadSourceImage(source);
+        if (!img) return null;
+        const extracted = extractSeedArgb(img);
+        if (!extracted) return null;
+        return { hex: hexFromArgb(extracted.argb), tone: extracted.averageTone };
     } catch (err) {
         console.warn('解析种子色失败，沿用上一次判断:', err);
         return null;
@@ -1048,13 +1121,18 @@ function applyBackgroundImage(url, revokePrevious = false) {
     document.body.style.backgroundRepeat = 'no-repeat';
 }
 
+// 站内默认壁纸（index.html 里 body 的 background-image 用的就是它）。
+// 没有自定义背景图时按它取色，这样「清除图片」恢复默认壁纸后配色会重新跟着默认壁纸走，
+// 而不是停在一个写死的颜色上。
+const DEFAULT_WALLPAPER = './assets/default.png';
+
 async function loadImages() {
     // 1. 加载背景图片文件（如果有）
     const bgFile = await getDB('background_img');
     
-    // 2. 处理主题生成（优先使用缓存主色）
+    // 2. 处理主题生成（优先使用缓存主色，其次自定义背景图，最后默认壁纸）
     const cachedColor = getCachedPrimaryColor();
-    const initialSource = cachedColor || bgFile || '#9C4F4F';
+    const initialSource = cachedColor || bgFile || DEFAULT_WALLPAPER;
 
     // 首屏也要定好明暗（跟随取色模式下靠种子色的 tone 判断），
     // 但不走圆形揭示动画：loading-modal 还盖着，而且这是首次绘制
@@ -1275,7 +1353,8 @@ async function repickColor(seedColor) {
         if (bgFile) {
             await applyThemeAnimated(bgFile);
         } else {
-            await applyThemeAnimated(getCachedPrimaryColor() || '#9C4F4F');
+            // 没有自定义背景图时，背景就是站内默认壁纸，按它重新取色
+            await applyThemeAnimated(DEFAULT_WALLPAPER);
         }
     }
     if (typeof window.recomputeScale === 'function') window.recomputeScale();
@@ -1319,8 +1398,9 @@ async function repickFromImageSource(rawSrc) {
     const src = normalizeImageSource(rawSrc);
     if (!src) throw new Error('图片地址无效');
     const img = await loadImageElement(src);
-    const argb = await sourceColorFromImage(img);
-    const color = hexFromArgb(argb);
+    const extracted = extractSeedArgb(img);
+    if (!extracted) throw new Error('图片中没有可用的像素');
+    const color = hexFromArgb(extracted.argb);
     await applyThemeAnimated(color);
     if (typeof window.recomputeScale === 'function') window.recomputeScale();
     return color;
