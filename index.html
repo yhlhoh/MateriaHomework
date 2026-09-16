@@ -318,6 +318,56 @@
             box-shadow: none !important;
         }
 
+        /* ==================== 快捷文字徽章 ==================== */
+        .quick-text-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .quick-text-bar[hidden] {
+            display: none;
+        }
+
+        /* 覆盖 sober s-badge 默认的 8x8 小圆点，把它变成可点击的文字标签 */
+        .quick-text-bar > s-badge.quick-text-badge {
+            width: auto !important;
+            height: auto !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            background: var(--s-color-secondary-container, #E8DEF8) !important;
+            color: var(--s-color-on-secondary-container, #1D192B) !important;
+            font-size: 0.8125rem !important;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: filter 0.15s ease, transform 0.12s ease;
+        }
+
+        .quick-text-bar > s-badge.quick-text-badge:hover {
+            filter: brightness(0.94);
+        }
+
+        /* s-badge 内部文字部分（part="text"）：放大成更好点的标签尺寸 */
+        .quick-text-bar > s-badge.quick-text-badge::part(text) {
+            height: 24px !important;
+            padding: 0 10px !important;
+            border-radius: 12px !important;
+            font-size: 0.8125rem !important;
+            line-height: 1 !important;
+        }
+
+        .quick-text-bar > s-badge.quick-text-badge:active {
+            transform: scale(0.94);
+        }
+
+        .quick-text-bar > s-badge.quick-text-badge:focus-visible {
+            outline: 2px solid var(--s-color-primary, #9C4F4F);
+            outline-offset: 2px;
+        }
+
     </style>
 </head>
 <body>
@@ -422,6 +472,8 @@
                         <s-picker-item value="#616161">灰色</s-picker-item>
                     </s-picker>
                 </div>
+                <!-- 快捷文字徽章：点击后在光标处插入对应文字（列表见 src/richTextEditor.js 的 DEFAULT_QUICK_TEXTS） -->
+                <div class="quick-text-bar" id="quick-text-bar" role="toolbar" aria-label="快捷文字"></div>
                 <s-field style="height:250px; width:650px;">
                     <div slot="label">请输入内容</div>
                     <div id="rich-editor"></div>
