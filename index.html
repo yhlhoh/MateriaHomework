@@ -395,6 +395,34 @@
             outline-offset: 2px;
         }
 
+        /* ==================== 重新取色过渡 ==================== */
+        /* theme-transition 只在切换主题的瞬间挂在 <html> 上，让所有用到主题色的元素
+           平滑过渡；过渡结束后立刻摘掉，避免长期覆盖 hover / 拖拽等自身过渡。
+           只列颜色相关属性，font-size / transform 不参与，避免版面跟着动。 */
+        html.theme-transition,
+        html.theme-transition *,
+        html.theme-transition *::before,
+        html.theme-transition *::after {
+            transition:
+                background-color 520ms cubic-bezier(0.2, 0, 0, 1),
+                color 520ms cubic-bezier(0.2, 0, 0, 1),
+                border-color 520ms cubic-bezier(0.2, 0, 0, 1),
+                outline-color 520ms cubic-bezier(0.2, 0, 0, 1),
+                fill 520ms cubic-bezier(0.2, 0, 0, 1),
+                stroke 520ms cubic-bezier(0.2, 0, 0, 1),
+                box-shadow 520ms cubic-bezier(0.2, 0, 0, 1),
+                text-shadow 520ms cubic-bezier(0.2, 0, 0, 1) !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html.theme-transition,
+            html.theme-transition *,
+            html.theme-transition *::before,
+            html.theme-transition *::after {
+                transition: none !important;
+            }
+        }
+
     </style>
 </head>
 <body>

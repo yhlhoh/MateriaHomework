@@ -822,6 +822,7 @@ function ensureSPage() {
     return sPage;
 }
 
+// 把主题真正写到 s-page 的 inline style 上（createScheme 会整段替换 cssText）
 async function applyMaterialYouTheme(source) {
     const pageElement = ensureSPage();
     try {
@@ -852,6 +853,39 @@ async function applyMaterialYouTheme(source) {
         await createScheme('#9C4F4F', { page: pageElement });
         const defaultColor = getPrimaryColorFromPage();
         if (defaultColor) setCachedPrimaryColor(defaultColor);
+    }
+}
+
+// ==================== 重新取色过渡 ====================
+const THEME_TRANSITION_CLASS = 'theme-transition';
+const THEME_TRANSITION_MS = 520;
+let themeTransitionTimer = null;
+
+/**
+ * 重新取色时套一层过渡动画。
+ * createScheme 会一次性替换 s-page 的 inline style，所有 var(--s-color-*) 同时改变，
+ * 默认是瞬变。这里在换色前给 <html> 挂上 theme-transition（见 index.html 的同名规则），
+ * 换色完成、过渡走完后再摘掉，避免长期覆盖 hover、拖拽等自身过渡。
+ * 首次加载不走这里（loading-modal 还盖着，动画没意义）。
+ */
+async function applyThemeAnimated(source) {
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (prefersReduced) {
+        return applyMaterialYouTheme(source);
+    }
+
+    const root = document.documentElement;
+    root.classList.add(THEME_TRANSITION_CLASS);
+    // 强制一次样式计算，确保过渡规则在颜色改变之前已经生效
+    void root.offsetWidth;
+
+    clearTimeout(themeTransitionTimer);
+    try {
+        return await applyMaterialYouTheme(source);
+    } finally {
+        themeTransitionTimer = setTimeout(() => {
+            root.classList.remove(THEME_TRANSITION_CLASS);
+        }, THEME_TRANSITION_MS + 80);
     }
 }
 
@@ -909,8 +943,8 @@ document.getElementById('bg-image-item').addEventListener('click', () => {
             const url = URL.createObjectURL(file);
             applyBackgroundImage(url, true);
             await setDB('background_img', file);
-            // 重新从图片提取主色并自动缓存
-            await applyMaterialYouTheme(file);
+            // 重新从图片提取主色并自动缓存（带过渡）
+            await applyThemeAnimated(file);
         }
         input.value = '';
     };
@@ -1093,13 +1127,13 @@ async function repickColor(seedColor) {
     const color = normalizeSeedColor(seedColor);
 
     if (color) {
-        await applyMaterialYouTheme(color);
+        await applyThemeAnimated(color);
     } else {
         const bgFile = await getDB('background_img');
         if (bgFile) {
-            await applyMaterialYouTheme(bgFile);
+            await applyThemeAnimated(bgFile);
         } else {
-            await applyMaterialYouTheme(getCachedPrimaryColor() || '#9C4F4F');
+            await applyThemeAnimated(getCachedPrimaryColor() || '#9C4F4F');
         }
     }
     syncThemeToIframeBackground();
@@ -1146,7 +1180,7 @@ async function repickFromImageSource(rawSrc) {
     const img = await loadImageElement(src);
     const argb = await sourceColorFromImage(img);
     const color = hexFromArgb(argb);
-    await applyMaterialYouTheme(color);
+    await applyThemeAnimated(color);
     syncThemeToIframeBackground();
     if (typeof window.recomputeScale === 'function') window.recomputeScale();
     return color;
