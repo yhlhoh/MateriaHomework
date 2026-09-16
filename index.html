@@ -409,16 +409,23 @@
         <input type="file" id="img-input" accept="image/*" multiple style="display:none">
 
         <div class="controls">
-            <button id="bg-change-btn" class="primary-btn" data-name="更换背景">
-                <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
-                <s-ripple attached="true"></s-ripple>
-            </button>
+            <!-- 更换背景：弹出菜单选择「本地图片」或「iframe 网页」 -->
+            <s-popup-menu>
+                <button id="bg-change-btn" class="primary-btn" data-name="更换背景" slot="trigger">
+                    <span class="icon-mask" style="--icon-url: url('assets/image.svg')" aria-hidden="true"></span>
+                    <s-ripple attached="true"></s-ripple>
+                </button>
+                <s-popup-menu-item id="bg-image-item">
+                    <s-icon slot="start" src="assets/image.svg"></s-icon>
+                    选择本地图片
+                </s-popup-menu-item>
+                <s-popup-menu-item id="bg-iframe-item">
+                    <s-icon slot="start" src="assets/iframe.svg"></s-icon>
+                    使用 iframe 网页
+                </s-popup-menu-item>
+            </s-popup-menu>
             <button id="img-add-btn" class="primary-btn" data-name="添加图片">
                 <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
-                <s-ripple attached="true"></s-ripple>
-            </button>
-            <button id="iframe-bg-btn" class="primary-btn" data-name="iframe 背景">
-                <span class="icon-mask" style="--icon-url: url('assets/iframe.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple>
             </button>
             <button id="full-screen-btn" class="primary-btn" data-name="切换全屏">

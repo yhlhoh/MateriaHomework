@@ -899,7 +899,8 @@ async function loadImages() {
     savedCustomImages.forEach(imgData => createCustomImgElement(imgData.id, imgData.file));
 }
 
-document.getElementById('bg-change-btn').addEventListener('click', () => {
+// 「更换背景」菜单 -> 选择本地图片
+document.getElementById('bg-image-item').addEventListener('click', () => {
     const input = document.getElementById('bg-input');
     input.onchange = async (e) => {
         const file = e.target.files[0];
@@ -1373,7 +1374,8 @@ window.resetPic = function() {
     const iframeBgDialog = document.getElementById('iframe-bg-dialog');
     const iframeBgUrlInput = document.getElementById('iframe-bg-url');
 
-    const iframeBgBtn = document.getElementById('iframe-bg-btn');
+    // 「更换背景」菜单 -> 使用 iframe 网页
+    const iframeBgBtn = document.getElementById('bg-iframe-item');
     if (iframeBgBtn) {
         iframeBgBtn.addEventListener('click', () => {
             if (!iframeBgDialog) return;
