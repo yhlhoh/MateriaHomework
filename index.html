@@ -31,7 +31,10 @@
 
         .loading-modal {
             position: fixed;
-            backdrop-filter: blur(20px);
+            /* 用方案自己的背景色铺满，文字用 on-background，明暗两种方案下对比度都成立。
+               原来只做了 backdrop-filter 且标题写死黑色，深色模式 + 深壁纸时会看不见。 */
+            background-color: var(--s-color-background, #f8f9fb);
+            color: var(--s-color-on-background, #3E1914);
             top: 0px;
             left: 0px;
             opacity: 100;
@@ -92,7 +95,7 @@
             padding: 4vh 4vw;
             gap: 4vw;
             position: relative;
-            z-index: 1; /* 保证看板内容位于 iframe 背景层之上 */
+            z-index: 2; /* 位于 iframe 背景层（0）与薄纱（1）之上 */
         }
 
         .left-panel {
@@ -153,7 +156,7 @@
             max-height: calc(70px * var(--task-scale));
             gap: calc(12px * var(--task-scale));
             flex-shrink: 0;
-            color: var(--s-color-on-surface, #3E1914); /* 表面上的文字 */
+            color: var(--s-color-on-tertiary-container, #444465); /* 与标签容器色配对 */
             font-weight: bold;
             font-size: calc(30px * var(--task-scale));
             margin-right: calc(20px * var(--task-scale));
@@ -179,7 +182,7 @@
             min-height:0;
             outline: none;
             align-self: stretch;  
-            color: var(--s-color-on-surface, #3E1914); /* 表面上的文字 */
+            color: var(--s-color-on-surface-variant, #40484C); /* 卡片底色是 surface-variant，配对的是它 */
             font-size: calc(40px * var(--task-scale));
             line-height: 1.32;
             font-weight: bold;
@@ -195,9 +198,9 @@
         }
 
         .delete-btn {
-            background: #fff;
+            background: var(--s-color-error-container, #FFDAD6);
             border: none;
-            color: var(--s-color-error, #d32f2f); /* 错误色，红色 */
+            color: var(--s-color-on-error-container, #93000A); /* 与 error-container 配对 */
             width: calc(40px * var(--task-scale));
             height: calc(40px * var(--task-scale));
             border-radius: 50%;
@@ -211,12 +214,12 @@
             margin-top: calc(8px * var(--task-scale));
             opacity: 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            transition: background-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+            transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
             flex-shrink: 0;
             z-index: 99999;
         }
 
-        .delete-btn:hover { background: #ffeaea; transform: scale(1.1); }
+        .delete-btn:hover { background: var(--s-color-error, #BA1A1A); color: var(--s-color-on-error, #fff); transform: scale(1.1); }
         .task-item:hover .delete-btn { opacity: 1; }
 
         .restore-panel {
@@ -247,7 +250,7 @@
             border: 1px solid transparent;
             transition: background-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
             position: relative;
-            color: var(--s-color-on-surface, #3E1914);
+            color: var(--s-color-on-tertiary-container, #444465); /* 与按钮底色配对 */
         }
 
         .primary-btn .icon-svg {
@@ -281,6 +284,30 @@
 
         s-page {
             background-color: rgba(255, 0, 0, 0);
+        }
+
+        /* 壁纸之上、内容之下的一层薄纱。
+           看板背景是用户壁纸，而 s-page 是透明的，深色方案会把前景色翻成浅色——
+           浅色文字压在浅色壁纸上比浅色模式还难认。实测（默认壁纸平均色 #e3def2、
+           深色方案时钟色 #c1c1ff）：
+             不铺薄纱      #e3def2  对比度 1.30:1  ❌ 基本看不见
+             0.62         #68656f  对比度 3.35:1  ⚠ 刚过大字阈值
+             0.68         #5c5963  对比度 4.03:1  ← 当前取值，壁纸仍可见 32%
+             0.72         #54525a  对比度 4.52:1  ✅ AA，但壁纸只剩 28%
+           压在看板上的文字（时钟 15vw、日期 1.8vw）都算大字号，3:1 即达标；
+           想让时钟也满足 AA 就把下面这个值调到 0.72。浅色方案完全不铺，保持原观感。 */
+        s-page[dark] .scrim {
+            opacity: 0.68;
+        }
+
+        .scrim {
+            position: fixed;
+            inset: 0;
+            z-index: 1; /* 盖住 iframe 背景层（0），又在看板内容（2）之下 */
+            pointer-events: none;
+            background-color: var(--s-color-background, #f8f9fb);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         /* ==================== iframe 背景层 ==================== */
@@ -415,6 +442,10 @@
         html.theme-transition .primary-btn,
         html.theme-transition .primary-btn::before,
         html.theme-transition .restore-panel,
+        html.theme-transition .scrim {
+            transition: opacity 520ms cubic-bezier(0.2, 0, 0, 1) !important;
+        }
+
         html.theme-transition .iframe-bg-layer {
             transition:
                 background-color 520ms cubic-bezier(0.2, 0, 0, 1),
@@ -436,6 +467,7 @@
             html.theme-transition .primary-btn,
             html.theme-transition .primary-btn::before,
             html.theme-transition .restore-panel,
+            html.theme-transition .scrim,
             html.theme-transition .iframe-bg-layer {
                 transition: none !important;
             }
@@ -445,8 +477,10 @@
 </head>
 <body>
     <s-page style="background-color: rgba(255, 0, 0, 0)">
+        <!-- 深色方案下压暗壁纸的薄纱；必须放在 s-page 内部才能继承主题变量 -->
+        <div class="scrim" aria-hidden="true"></div>
         <div class="loading-modal">
-            <h1 style="color: #000000">正在加载</h1>
+            <h1>正在加载</h1>
             <span id="version-info"></span>
             <br>
             <s-circular-progress indeterminate="true"></s-circular-progress>
