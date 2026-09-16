@@ -92,6 +92,8 @@
             height: 100vh;
             padding: 4vh 4vw;
             gap: 4vw;
+            position: relative;
+            z-index: 1; /* 保证看板内容位于 iframe 背景层之上 */
         }
 
         .left-panel {
@@ -282,6 +284,32 @@
             background-color: rgba(255, 0, 0, 0);
         }
 
+        /* ==================== iframe 背景层 ==================== */
+        .iframe-bg-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 0; /* 位于 body 背景图之上、看板内容之下 */
+            overflow: hidden;
+            pointer-events: none; /* 背景不拦截鼠标/触摸操作 */
+        }
+
+        .iframe-bg-layer[hidden] {
+            display: none;
+        }
+
+        .iframe-bg-frame {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: transparent;
+        }
+
+        /* 截图导出时隐藏 iframe（html2canvas 无法绘制跨域 iframe） */
+        body.capturing .iframe-bg-layer {
+            visibility: hidden;
+        }
+
         .grid {
             grid-template-columns: minmax(100px, auto) minmax(100px, auto);
         }
@@ -388,6 +416,10 @@
             </button>
             <button id="img-add-btn" class="primary-btn" data-name="添加图片">
                 <span class="icon-mask" style="--icon-url: url('assets/add.svg')" aria-hidden="true"></span>
+                <s-ripple attached="true"></s-ripple>
+            </button>
+            <button id="iframe-bg-btn" class="primary-btn" data-name="iframe 背景">
+                <span class="icon-mask" style="--icon-url: url('assets/iframe.svg')" aria-hidden="true"></span>
                 <s-ripple attached="true"></s-ripple>
             </button>
             <button id="full-screen-btn" class="primary-btn" data-name="切换全屏">
@@ -527,6 +559,31 @@
             </div>
             <s-button slot="action" type="text" id="add-subject-cancel">取消</s-button>
             <s-button slot="action" type="text" id="add-subject-confirm">确定</s-button>
+        </s-dialog>
+
+        <!-- iframe 背景对话框 -->
+        <s-dialog id="iframe-bg-dialog">
+            <div slot="headline">iframe 背景</div>
+            <div slot="text" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                <div style="font-size: 0.875rem; line-height: 1.6; opacity: 0.85;">
+                    填写一个网页地址，它会作为看板背景显示（背景层不拦截鼠标操作）。<br>
+                    支持 <code>https://</code> 网址，也支持 <code>/</code>、<code>./</code> 开头的站内路径。
+                </div>
+                <s-text-field id="iframe-bg-url" label="iframe 地址" placeholder="https://example.com/bg.html"></s-text-field>
+                <div style="font-size: 0.8125rem; line-height: 1.6; opacity: 0.85;">
+                    背景页引入 <code>iframe-bg-sdk.js</code> 后，调用
+                    <code>MateriaBackground.repick('#6750A4')</code>
+                    就能让看板按该颜色重新取色。
+                    <button
+                        type="button"
+                        id="iframe-bg-demo"
+                        style="border: none; background: none; padding: 0; font: inherit; color: var(--s-color-primary, #6750A4); text-decoration: underline; cursor: pointer;"
+                    >填入内置示例 ./iframe-bg-demo.html</button>
+                </div>
+            </div>
+            <s-button slot="action" type="text" id="iframe-bg-clear">清除</s-button>
+            <s-button slot="action" type="text" id="iframe-bg-cancel">取消</s-button>
+            <s-button slot="action" type="text" id="iframe-bg-confirm">应用</s-button>
         </s-dialog>
 
         <script type="module" src="./src/main.js"></script>
