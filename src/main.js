@@ -2,7 +2,10 @@
 import screenfull from 'screenfull';
 import html2canvas from 'html2canvas';
 import 'sober';
+// 本地打包 sober 的滚动条样式，避免离线时依赖 unpkg CDN
+import 'sober/style/scroll-view.css';
 import { createScheme } from 'sober-theme';
+import { registerSW } from 'virtual:pwa-register';
 import { createRichTextEditor } from './richTextEditor';
 import changelogText from '../CHANGELOG.txt?raw';
 import dayjs from 'dayjs';
@@ -1227,14 +1230,10 @@ function scheduleScale() {
 
 window.recomputeScale = recomputeScale;
 
-// ==================== Service Worker ====================
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('Service Worker 注册成功:', registration.scope))
-            .catch(error => console.log('Service Worker 注册失败:', error));
-    });
-}
+// ==================== Service Worker（PWA 离线支持） ====================
+// 使用 vite-plugin-pwa 提供的注册器：生产环境注册 precache + 离线导航回退的 SW，
+// 开发环境注册 dev-sw，避免手动写死 /sw.js 在 dev 下 404。
+registerSW({ immediate: true });
 
 // ==================== 初始化 ====================
 setInterval(updateClock, 1000);
