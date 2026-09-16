@@ -12,7 +12,11 @@
  *     // 2) 不传颜色：让看板用它自己的背景图 / 缓存主色重新取色
  *     MateriaBackground.repick();
  *
- *     // 3) 从图片里取平均色后再交给看板
+ *     // 3) 把图片直接交给宿主取色（宿主读像素、算主题色并重建主题）
+ *     await MateriaBackground.repickFromImage('./wallpaper.jpg');
+ *     //    也可以传 <img> 元素：await MateriaBackground.repickFromImage(imgEl);
+ *
+ *     // 3b) 也可以只在 iframe 内本地取色，再自己决定要不要上报
  *     const color = await MateriaBackground.pickColorFromImage('./wallpaper.jpg');
  *     MateriaBackground.repick(color);
  *
@@ -24,8 +28,9 @@
  *   </script>
  *
  * 协议：window.postMessage，channel = 'materia-homework-iframe-bg'
- *   子页 -> 宿主：color-repick / color-set / ready
+ *   子页 -> 宿主：color-repick / color-set / color-repick-image / ready
  *   宿主 -> 子页：theme  { color, seed }
+ *                 color-pick-result  { requestId, ok, color?, error? }
  * 该文件为无构建依赖的普通脚本，可直接被任意静态页面引用。
  */
 (function (global) {
@@ -40,6 +45,9 @@
 
   var themeListeners = [];
   var lastTheme = null;
+  // 等待宿主回执的图片取色请求：requestId -> { resolve, reject, timer }
+  var pendingPicks = new Map();
+  var pickSeq = 0;
 
   function inIframe() {
     try {
@@ -103,6 +111,21 @@
     var data = event.data;
     if (!data || typeof data !== 'object' || data.channel !== CHANNEL) return;
     if (data.source !== HOST_SOURCE) return;
+
+    // 宿主完成「图片取色」后的回执
+    if (data.type === 'color-pick-result') {
+      var entry = pendingPicks.get(data.requestId);
+      if (!entry) return;
+      pendingPicks.delete(data.requestId);
+      clearTimeout(entry.timer);
+      if (data.ok && data.color) {
+        entry.resolve({ color: normalizeColor(data.color) || data.color });
+      } else {
+        entry.reject(new Error(data.error || '宿主图片取色失败'));
+      }
+      return;
+    }
+
     if (data.type !== 'theme') return;
     lastTheme = {
       color: normalizeColor(data.color) || '',
@@ -116,6 +139,16 @@
       }
     });
   });
+
+  /** 把 URL / <img> 统一成宿主能接收的图片地址 */
+  function resolveImageSource(source) {
+    if (typeof source === 'string') return source.trim();
+    if (source && typeof source === 'object') {
+      var src = source.currentSrc || source.src || '';
+      if (typeof src === 'string' && src) return src;
+    }
+    return '';
+  }
 
   /** 计算图片平均色（图片必须允许 canvas 读取，跨域图片需带 CORS 头） */
   function pickColorFromImage(source, options) {
@@ -239,6 +272,42 @@
     /** 最近一次收到的宿主主题 */
     getTheme: function () {
       return lastTheme;
+    },
+
+    /**
+     * 把图片直接交给宿主取色：宿主会读取图片像素、算出主题色并重建 Material You 主题。
+     * 跨域图片需要在宿主侧能被 CORS 读取，否则会 reject。
+     * @param {string|HTMLImageElement} source 图片地址（http(s) / data:image / blob:）或 <img> 元素
+     * @param {{timeout?: number}} [options]
+     * @returns {Promise<{color: string}>}
+     */
+    repickFromImage: function (source, options) {
+      var src = resolveImageSource(source);
+      if (!src) {
+        return Promise.reject(new Error('repickFromImage 需要一个图片地址或 <img> 元素'));
+      }
+      if (!inIframe()) {
+        return Promise.reject(new Error('当前页面不在 iframe 中，无法请求宿主取色'));
+      }
+
+      var opts = options || {};
+      var timeoutMs = typeof opts.timeout === 'number' && opts.timeout > 0 ? opts.timeout : 20000;
+      var requestId = 'pick-' + (++pickSeq) + '-' + Date.now();
+
+      return new Promise(function (resolve, reject) {
+        var timer = setTimeout(function () {
+          pendingPicks.delete(requestId);
+          reject(new Error('等待宿主取色超时'));
+        }, timeoutMs);
+
+        pendingPicks.set(requestId, { resolve: resolve, reject: reject, timer: timer });
+
+        if (!post('color-repick-image', { src: src, requestId: requestId })) {
+          clearTimeout(timer);
+          pendingPicks.delete(requestId);
+          reject(new Error('图片取色请求发送失败'));
+        }
+      });
     },
 
     normalizeColor: normalizeColor,

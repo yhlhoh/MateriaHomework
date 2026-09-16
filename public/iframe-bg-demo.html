@@ -135,17 +135,15 @@
   };
 
   document.getElementById('toimage').onclick = function () {
-    var img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = './assets/default.png';
-    MateriaBackground.pickColorFromImage(img)
-      .then(function (hex) {
-        stopAuto();
-        statusEl.textContent = '从 assets/default.png 取到 ' + hex + '，已请求看板取色';
-        MateriaBackground.repick(hex);
+    stopAuto();
+    statusEl.textContent = '正在把 assets/default.png 交给看板取色…';
+    // 直接把图片交给宿主：由看板读像素、算主题色并重建主题
+    MateriaBackground.repickFromImage('./assets/default.png')
+      .then(function (result) {
+        statusEl.textContent = '看板从 assets/default.png 取到 ' + result.color;
       })
       .catch(function (err) {
-        statusEl.textContent = '取色失败：' + err.message;
+        statusEl.textContent = '宿主取色失败：' + err.message;
       });
   };
 

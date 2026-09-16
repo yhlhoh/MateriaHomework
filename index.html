@@ -578,8 +578,9 @@
                 <s-text-field id="iframe-bg-url" label="iframe 地址" placeholder="https://example.com/bg.html"></s-text-field>
                 <div style="font-size: 0.8125rem; line-height: 1.6; opacity: 0.85;">
                     背景页引入 <code>iframe-bg-sdk.js</code> 后，调用
-                    <code>MateriaBackground.repick('#6750A4')</code>
-                    就能让看板按该颜色重新取色。
+                    <code>MateriaBackground.repick('#6750A4')</code> 可按指定颜色取色，
+                    调用 <code>MateriaBackground.repickFromImage(图片)</code>
+                    则可把图片直接交给看板取色。
                     <button
                         type="button"
                         id="iframe-bg-demo"

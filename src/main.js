@@ -5,6 +5,7 @@ import 'sober';
 // 本地打包 sober 的滚动条样式，避免离线时依赖 unpkg CDN
 import 'sober/style/scroll-view.css';
 import { createScheme } from 'sober-theme';
+import { hexFromArgb, sourceColorFromImage } from '@material/material-color-utilities';
 import { registerSW } from 'virtual:pwa-register';
 import { createRichTextEditor } from './richTextEditor';
 import changelogText from '../CHANGELOG.txt?raw';
@@ -1106,6 +1107,65 @@ async function repickColor(seedColor) {
     return getPrimaryColorFromPage();
 }
 
+// ---------- 直接给图片取色（供 iframe SDK 调用） ----------
+
+/** 校验并归一化图片地址：支持 http(s)、data:image、blob: 以及站内相对路径 */
+function normalizeImageSource(raw) {
+    if (raw == null) return '';
+    const text = String(raw).trim();
+    if (!text) return '';
+    if (/^data:image\//i.test(text)) return text;
+    if (/^blob:/i.test(text)) return text;
+    return normalizeIframeUrl(text);
+}
+
+function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        // 跨域图片需要 CORS 才能读取像素；不带 CORS 头时会加载失败，直接如实报错
+        let crossOrigin = false;
+        try {
+            crossOrigin = new URL(src, location.href).origin !== location.origin;
+        } catch {
+            crossOrigin = false;
+        }
+        if (crossOrigin) img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(crossOrigin ? '图片加载失败（跨域图片需要允许 CORS）' : '图片加载失败'));
+        img.src = src;
+    });
+}
+
+/**
+ * 用图片本身取色并应用主题。
+ * @returns {Promise<string>} 取到的 '#rrggbb'
+ */
+async function repickFromImageSource(rawSrc) {
+    const src = normalizeImageSource(rawSrc);
+    if (!src) throw new Error('图片地址无效');
+    const img = await loadImageElement(src);
+    const argb = await sourceColorFromImage(img);
+    const color = hexFromArgb(argb);
+    await applyMaterialYouTheme(color);
+    syncThemeToIframeBackground();
+    if (typeof window.recomputeScale === 'function') window.recomputeScale();
+    return color;
+}
+
+/** 向背景 iframe 回发消息 */
+function replyToIframeBackground(payload) {
+    const frame = getIframeBgFrame();
+    if (!frame || !frame.contentWindow) return;
+    try {
+        frame.contentWindow.postMessage(
+            { channel: IFRAME_BG_CHANNEL, source: IFRAME_BG_HOST_SOURCE, ...payload },
+            '*',
+        );
+    } catch (err) {
+        console.warn('向 iframe 背景回发消息失败:', err);
+    }
+}
+
 window.addEventListener('message', async (event) => {
     const data = event.data;
     if (!data || typeof data !== 'object' || data.channel !== IFRAME_BG_CHANNEL) return;
@@ -1120,6 +1180,18 @@ window.addEventListener('message', async (event) => {
             await repickColor(data.color);
         } else if (data.type === 'color-set') {
             if (isValidHexColor(data.color)) await repickColor(data.color.trim());
+        } else if (data.type === 'color-repick-image') {
+            try {
+                const color = await repickFromImageSource(data.src);
+                replyToIframeBackground({ type: 'color-pick-result', requestId: data.requestId, ok: true, color });
+            } catch (err) {
+                replyToIframeBackground({
+                    type: 'color-pick-result',
+                    requestId: data.requestId,
+                    ok: false,
+                    error: String(err?.message || err),
+                });
+            }
         } else if (data.type === 'ready') {
             syncThemeToIframeBackground();
         }
