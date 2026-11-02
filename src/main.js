@@ -1081,11 +1081,11 @@ function readSchemeColor(name) {
     return hex ? argbFromHex(hex) : null;
 }
 
-// 时钟/日期优先使用 MD3 语义色角色，按与实际背景的对比度依次挑选。
+// 时钟/日期优先使用更适合大字号展示的 MD3 强调色角色，按与实际背景的对比度依次挑选。
 const MD3_WALLPAPER_TEXT_ROLES = [
+    '--s-color-inverse-primary',
     '--s-color-primary',
-    '--s-color-on-surface',
-    '--s-color-on-surface-variant',
+    '--s-color-tertiary',
     '--s-color-secondary',
 ];
 
@@ -1093,7 +1093,7 @@ const MD3_WALLPAPER_TEXT_ROLES = [
  * 压在壁纸上的文字（时钟/日期）用什么颜色。
  * 关键：像 Android 锁屏那样由**壁纸**决定，而不是跟着界面的浅色/深色方案翻。
  * 否则同一张壁纸在两种模式下会拿到相反的颜色——背景根本没变，文字色却反了。
- * 做法：按 MD3 语义色（primary / on-surface / on-surface-variant / secondary）
+ * 做法：按 MD3 强调色（inverse-primary / primary / tertiary / secondary）
  * 依次尝试，按实际对比度挑第一个达标的；都不行才退到纯白/纯黑。
  * @param {number|null} effectiveBg 实际背景色（壁纸叠上薄纱之后）
  * @returns {string|null} '#rrggbb'
