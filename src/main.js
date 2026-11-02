@@ -1081,17 +1081,20 @@ function readSchemeColor(name) {
     return hex ? argbFromHex(hex) : null;
 }
 
-// 壁纸文字的两个候选色调：同一色相下的亮(tone 80)与暗(tone 40)。
-// 这两个值正好等同于 Material 深色/浅色方案里的 primary 色调，但现在不按方案选，
-// 而是按与实际背景的对比度选。
-const WALLPAPER_TEXT_TONES = [80, 40];
+// 时钟/日期优先使用更适合大字号展示的 MD3 强调色角色，按与实际背景的对比度依次挑选。
+const MD3_WALLPAPER_TEXT_ROLES = [
+    '--s-color-inverse-primary',
+    '--s-color-primary',
+    '--s-color-tertiary',
+    '--s-color-secondary',
+];
 
 /**
  * 压在壁纸上的文字（时钟/日期）用什么颜色。
  * 关键：像 Android 锁屏那样由**壁纸**决定，而不是跟着界面的浅色/深色方案翻。
  * 否则同一张壁纸在两种模式下会拿到相反的颜色——背景根本没变，文字色却反了。
- * 做法：取壁纸代表色的同一色相，给出亮/暗两个候选，按实际对比度挑第一个达标的；
- * 都不行才退到纯白/纯黑。
+ * 做法：按 MD3 强调色（inverse-primary / primary / tertiary / secondary）
+ * 依次尝试，按实际对比度挑第一个达标的；都不行才退到纯白/纯黑。
  * @param {number|null} effectiveBg 实际背景色（壁纸叠上薄纱之后）
  * @returns {string|null} '#rrggbb'
  */
@@ -1099,19 +1102,28 @@ function resolveWallpaperTextColor(effectiveBg) {
     if (effectiveBg == null) return null;
 
     const candidates = [];
-    if (wallpaperArgb != null) {
-        const hct = Hct.fromInt(wallpaperArgb);
-        for (const tone of WALLPAPER_TEXT_TONES) {
-            candidates.push(hexFromArgb(Hct.from(hct.hue, hct.chroma, tone).toInt()));
-        }
+    for (const role of MD3_WALLPAPER_TEXT_ROLES) {
+        const color = readSchemeColor(role);
+        if (color == null) continue;
+        const hex = hexFromArgb(color);
+        if (!candidates.includes(hex)) candidates.push(hex);
     }
-    // 兜底：按背景明暗取纯白/纯黑
-    candidates.push(relativeLuminance(effectiveBg) < 0.5 ? '#ffffff' : '#000000');
+    // 兜底：按背景明暗优先黑/白，再补另一种，避免极端情况下无可用颜色
+    if (relativeLuminance(effectiveBg) < 0.5) {
+        candidates.push('#ffffff', '#000000');
+    } else {
+        candidates.push('#000000', '#ffffff');
+    }
 
     for (const hex of candidates) {
         if (contrastRatio(argbFromHex(hex), effectiveBg) >= WALLPAPER_TEXT_MIN_CONTRAST) return hex;
     }
-    return candidates[candidates.length - 1];
+    return candidates.reduce((best, current) => {
+        if (!best) return current;
+        const bestContrast = contrastRatio(argbFromHex(best), effectiveBg);
+        const currentContrast = contrastRatio(argbFromHex(current), effectiveBg);
+        return currentContrast > bestContrast ? current : best;
+    }, null);
 }
 
 /**
