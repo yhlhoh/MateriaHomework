@@ -1,0 +1,254 @@
+/* ==================== 富文本编辑器的自由色板 ====================
+   sober 没有色板 / 取色器组件（s-picker 只能选固定几项），所以这里自己画一个：
+   色相 × 明度的色块网格 + 原生取色器 + 十六进制输入 + 最近使用，任意颜色都能选。
+
+   面板由 src/richTextEditor.js 里的 createColorPalette 动态生成并挂进 <s-dialog>
+   的 light DOM：s-dialog 内部用的是原生 <dialog>.showModal()（顶层图层），
+   挂在 document.body 上的浮层会被它盖住，所以必须放进对话框内部。
+   position: fixed 不受对话框内部滚动容器的 overflow 裁剪影响。 */
+.color-palette {
+    position: fixed;
+    z-index: 40;
+    width: 300px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 10px;
+    border-radius: 16px;
+    background: var(--s-color-surface-container-high, #E7E8EA);
+    color: var(--s-color-on-surface, #191C1E);
+    border: 1px solid var(--s-color-outline-variant, rgba(0, 0, 0, 0.12));
+    box-shadow: 0 6px 16px 2px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    user-select: none;
+    -webkit-user-select: none;
+    animation: cp-in 0.16s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.color-palette[hidden] {
+    display: none;
+}
+
+@keyframes cp-in {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .color-palette {
+        animation: none;
+    }
+}
+
+/* ---------- 顶部：标题 / 当前颜色 / 恢复默认 ---------- */
+.cp-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 2px 8px;
+}
+
+.cp-title {
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: var(--s-color-on-surface, #191C1E);
+}
+
+.cp-current {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--s-color-outline, #70787D);
+    background: var(--s-color-surface, #F8F9FB);
+    flex-shrink: 0;
+}
+
+/* 没有设置颜色时画一条斜杠，和「默认颜色」的语义一致 */
+.cp-current[data-empty="true"] {
+    background:
+        linear-gradient(135deg, transparent 44%, var(--s-color-error, #B3261E) 44%, var(--s-color-error, #B3261E) 56%, transparent 56%),
+        var(--s-color-surface, #F8F9FB);
+}
+
+.cp-reset {
+    margin-left: auto;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--s-color-primary, #006782);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.cp-reset:hover {
+    background: var(--s-color-secondary-container, #CFE6F1);
+}
+
+/* ---------- 色块网格：12 色相 × 6 明度 + 一行灰阶 ---------- */
+.cp-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 4px;
+}
+
+.cp-swatch {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 5px;
+    background: var(--swatch, #ccc);
+    cursor: pointer;
+    box-sizing: border-box;
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.1s ease;
+}
+
+.cp-swatch:hover {
+    outline: 2px solid var(--s-color-primary, #006782);
+    outline-offset: 1px;
+    transform: scale(1.08);
+}
+
+.cp-swatch:active {
+    transform: scale(0.94);
+}
+
+/* 当前文字色：外圈再描一道，避免色块本身和 ring 撞色时看不出来 */
+.cp-swatch[data-current="true"] {
+    box-shadow: 0 0 0 2px var(--s-color-surface-container-high, #E7E8EA), 0 0 0 4px var(--s-color-primary, #006782);
+}
+
+.cp-swatch:focus-visible {
+    outline: 2px solid var(--s-color-primary, #006782);
+    outline-offset: 1px;
+}
+
+/* ---------- 自定义颜色：原生取色器 + 十六进制 + 吸管 ---------- */
+.cp-custom {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.cp-native {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    border: 1px solid var(--s-color-outline-variant, rgba(0, 0, 0, 0.12));
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--s-color-surface, #F8F9FB);
+}
+
+.cp-native input[type="color"] {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.cp-native input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.cp-native input[type="color"]::-webkit-color-swatch {
+    border: none;
+}
+
+.cp-hex {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 0 8px;
+    border: 1px solid var(--s-color-outline-variant, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: var(--s-color-surface, #F8F9FB);
+    color: var(--s-color-on-surface, #191C1E);
+    font: inherit;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 0.8125rem;
+    letter-spacing: 0.02em;
+    outline: none;
+}
+
+.cp-hex:focus {
+    border-color: var(--s-color-primary, #006782);
+}
+
+.cp-hex[data-invalid="true"] {
+    border-color: var(--s-color-error, #B3261E);
+}
+
+.cp-eyedrop {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--s-color-outline-variant, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: transparent;
+    color: var(--s-color-on-surface-variant, #40484C);
+    cursor: pointer;
+}
+
+.cp-eyedrop:hover {
+    background: var(--s-color-surface, #F8F9FB);
+}
+
+.cp-eyedrop svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+/* ---------- 最近使用 ---------- */
+.cp-recent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.cp-recent[hidden] {
+    display: none;
+}
+
+.cp-recent-label {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--s-color-on-surface-variant, #40484C);
+}
+
+.cp-recent-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.cp-recent-row .cp-swatch {
+    width: 18px;
+    height: 18px;
+    aspect-ratio: auto;
+    border-radius: 4px;
+}

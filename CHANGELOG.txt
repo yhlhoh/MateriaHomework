@@ -1,3 +1,8 @@
+26.11.8
+新增功能
+ - 编辑器的色彩选择现在可以自由取色
+ - 编辑器加入了“全选”按钮
+
 26.11.2 0be32e7
 修复
  - 时钟/日期取色改为更自然的 MD3 强调色顺序：inverse-primary / primary / tertiary / secondary，
